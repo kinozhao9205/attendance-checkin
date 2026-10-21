@@ -9,8 +9,8 @@ const MODEL_URL = 'assets/vendor/models';
   window.ATT_API_BASE = (window.ATT_API_BASE || '').replace(/\/+$/, '');
 })();
 const API = window.ATT_API_BASE || '';
-const token = localStorage.getItem('att_token') || '';
-const auth = () => (token ? { Authorization: 'Bearer ' + token } : {});
+// 每次请求动态读 token：登录后立即生效（跨域部署无 cookie，全靠 Bearer）
+const auth = () => { const t = localStorage.getItem('att_token') || ''; return t ? { Authorization: 'Bearer ' + t } : {}; };
 let COUNTRIES = {};
 let MODELS_OK = false;
 
