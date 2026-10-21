@@ -7,7 +7,7 @@
  *   POST /api/att/checkin      (Bearer) {type, lat, lng, descriptor} -> {record, eval}
  * 人脸模型与员工证件照特征提取均在浏览器本地完成，原始照片不上传。 */
 
-const MODEL_URL = 'assets/vendor/models';
+let MODEL_URL = 'assets/vendor/models';
 // API 地址解析：?api= 参数 > att-config.js 的 window.ATT_API_BASE > 本地记忆 > 同源
 (function () {
   const q = new URLSearchParams(location.search).get('api');
@@ -453,11 +453,18 @@ async function loadFaceModel() {
   if (!m) throw new Error('face-api load failed');
   if (m.nets.faceRecognitionNet.params) { MODELS_OK = true; return; }
   window.__faceModelLoading = (async () => {
-    await m.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    // 关键点：优先 tiny（小、快），文件缺失时退回标准版，避免整条链路失败
-    try { await m.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL); TINY_LM = true; }
-    catch (e) { await m.nets.faceLandmark68Net.loadFromUri(MODEL_URL); TINY_LM = false; }
-    await m.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    // 多源竞速 + 逐模型进度 + 失败换源（见 assets/face-models.js）
+    const base = await window.FaceModels.load({
+      tinyLandmark: true,
+      onProgress: (i, n, label) => {
+        const live = $('liveText');
+        if (live && !MODELS_OK) live.textContent = tr('loading_model') + ' ' + i + '/' + n;
+        const hint = $('camHintText');
+        if (hint && _camState === 'loading') hint.textContent = tr('loading_model') + ' ' + i + '/' + n;
+      },
+    });
+    TINY_LM = m.nets.faceLandmark68TinyNet.params ? true : false;
+    MODEL_URL = base;
     MODELS_OK = true;
     markModelReady();
   })().catch((e) => { window.__faceModelLoading = null; throw e; });

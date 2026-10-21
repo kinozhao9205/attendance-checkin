@@ -221,13 +221,15 @@
     <div id="enrollStatus" class="muted">请上传员工证件照（正面清晰人脸）</div>
     <div style="display:flex;gap:10px;margin-top:12px">
       <button class="btn" id="enrollBtn" onclick="doEnroll()" disabled>提取人脸并保存</button>
+      <button class="btn ghost" id="enrollRetry" onclick="retryModels()" style="display:none">重新加载模型</button>
       <button class="btn ghost" onclick="closeModal()">取消</button>
     </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="assets/i18n.js?v=7"></script>
-<script src="assets/att-config.js?v=7"></script>
-<script src="assets/attendance.js?v=7"></script>
+<script src="assets/i18n.js?v=8"></script>
+<script src="assets/face-models.js?v=8"></script>
+<script src="assets/att-config.js?v=8"></script>
+<script src="assets/attendance.js?v=8"></script>
 </body>
 </html>

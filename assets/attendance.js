@@ -1,6 +1,5 @@
 'use strict';
 /* 人脸考勤管理后台 */
-const MODEL_URL = 'assets/vendor/models';
 // API 地址解析：?api= 参数 > att-config.js 的 window.ATT_API_BASE > 本地记忆 > 同源（与员工打卡页同规则）
 (function () {
   const q = new URLSearchParams(location.search).get('api');
@@ -71,42 +70,62 @@ async function addEmp() {
 async function delEmp(id) { await api('/api/att/employees/' + id, { method: 'DELETE' }); loadEmployees(); }
 
 /* ---------- 人脸录入（证件照 → 本地提取特征） ---------- */
-let enrollId = '', enrollDescriptor = null;
+let enrollId = '', enrollDescriptor = null, enrollPreview = null;
 function openEnroll(id, name) {
-  enrollId = id; enrollDescriptor = null;
+  enrollId = id; enrollDescriptor = null; enrollPreview = null;
   $('enrollName').textContent = '员工：' + name;
   $('enrollImg').src = ''; $('enrollFile').value = '';
-  $('enrollBtn').disabled = true; $('enrollStatus').textContent = '请上传员工证件照（正面清晰人脸）';
+  $('enrollBtn').disabled = true;
+  $('enrollRetry').style.display = 'none';
+  $('enrollStatus').textContent = '请上传员工证件照（正面清晰人脸）';
   $('enrollModal').style.display = 'flex';
+  // 打开弹窗就开始预热模型（7.7MB），等用户选完照片时往往已经下好
+  ensureModels().catch(() => {});
 }
 function closeModal() { $('enrollModal').style.display = 'none'; }
 async function ensureModels() {
   if (MODELS_OK) return true;
   $('enrollStatus').textContent = '加载人脸模型…';
+  $('enrollRetry').style.display = 'none';
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    MODELS_OK = true; return true;
-  } catch (e) { $('enrollStatus').textContent = '模型加载失败（需联网）'; return false; }
+    await window.FaceModels.load({
+      tinyLandmark: false,           // 后台录入用标准关键点，精度更高
+      onProgress: (i, n, label) => { $('enrollStatus').textContent = '加载人脸模型 ' + i + '/' + n + '（' + label + '）…'; },
+    });
+    MODELS_OK = true;
+    $('enrollStatus').textContent = '模型已就绪，正在提取人脸特征…';
+    return true;
+  } catch (e) {
+    $('enrollStatus').textContent = '模型加载失败：' + (e && e.message ? e.message : '网络异常') + '（可点「重新加载模型」重试）';
+    $('enrollRetry').style.display = '';
+    return false;
+  }
+}
+async function retryModels() {
+  window.FaceModels.reset();
+  if (await ensureModels()) {
+    if (enrollPreview) extractEnroll();
+    else $('enrollStatus').textContent = '模型已就绪，请上传员工证件照';
+  }
 }
 function previewEnroll() {
   const f = $('enrollFile').files[0]; if (!f) return;
   const rd = new FileReader();
-  rd.onload = async () => {
-    $('enrollImg').src = rd.result;
-    if (!(await ensureModels())) return;
-    $('enrollStatus').textContent = '正在提取人脸特征…';
-    await $('enrollImg').decode();
-    try {
-      const det = await faceapi.detectSingleFace($('enrollImg'), new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
-      if (!det) { $('enrollStatus').textContent = '未检测到人脸，请换一张清晰证件照'; return; }
-      enrollDescriptor = Array.from(det.descriptor);
-      $('enrollStatus').textContent = '✅ 已提取 128 维特征，可保存';
-      $('enrollBtn').disabled = false;
-    } catch (e) { $('enrollStatus').textContent = '提取失败：' + e.message; }
-  };
+  rd.onload = async () => { $('enrollImg').src = rd.result; enrollPreview = rd.result; extractEnroll(); };
   rd.readAsDataURL(f);
+}
+async function extractEnroll() {
+  if (!enrollPreview) return;
+  if (!(await ensureModels())) return;
+  $('enrollStatus').textContent = '正在提取人脸特征…';
+  try { await $('enrollImg').decode(); } catch (e) {}
+  try {
+    const det = await faceapi.detectSingleFace($('enrollImg'), new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+    if (!det) { $('enrollStatus').textContent = '未检测到人脸，请换一张清晰证件照'; return; }
+    enrollDescriptor = Array.from(det.descriptor);
+    $('enrollStatus').textContent = '✅ 已提取 128 维特征，可保存';
+    $('enrollBtn').disabled = false;
+  } catch (e) { $('enrollStatus').textContent = '提取失败：' + e.message; }
 }
 async function doEnroll() {
   if (!enrollDescriptor) return;
