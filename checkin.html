@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title data-i18n="emp_title">员工打卡</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#070707">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HEYDAY">
+<script src="assets/i18n.js"></script>
+<script src="assets/vendor/face-api.min.js"></script>
+<style>
+:root{
+  --bg:#0b1020; --card:#131c30; --card2:#0f1729; --line:#22304d; --line2:#1a2740;
+  --txt:#e6edf7; --sub:#8fa3c2; --dim:#63779a;
+  --brand:#e60012; --brand2:#ff4d4f; --brand-soft:rgba(230,0,18,.14);
+  --acc:#38bdf8; --acc2:#22d3ee;
+  --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  background:var(--bg);color:var(--txt);min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:20px 16px calc(20px + env(safe-area-inset-bottom));
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  position:relative;overflow-x:hidden;
+}
+body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(760px 420px at 50% -12%, rgba(230,0,18,.20), transparent 62%),
+    radial-gradient(620px 380px at 108% 108%, rgba(56,189,248,.11), transparent 60%),
+    var(--bg);
+}
+.box{
+  width:100%;max-width:428px;padding:20px;border-radius:22px;
+  background:linear-gradient(180deg,rgba(21,31,52,.94),rgba(12,19,34,.97));
+  border:1px solid var(--line);
+  box-shadow:0 30px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}
+.brand{display:flex;align-items:center;gap:9px;min-width:0}
+.brand .logo{
+  width:32px;height:32px;border-radius:10px;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  color:#fff;font-weight:800;font-size:15px;letter-spacing:0;
+  box-shadow:0 8px 20px rgba(230,0,18,.42);
+}
+.brand .bt{min-width:0}
+.brand .b1{font-size:13px;font-weight:700;letter-spacing:.6px;line-height:1.2}
+.brand .b2{font-size:10px;color:var(--dim);letter-spacing:1.4px;text-transform:uppercase;line-height:1.4}
+.lang-switch{display:inline-flex;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:var(--card2);flex:0 0 auto}
+.lang-switch .lang-btn{background:transparent;color:var(--sub);border:none;border-radius:0;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:.18s}
+.lang-switch .lang-btn.active{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff}
+
+.install{display:flex;align-items:center;gap:10px;background:rgba(56,189,248,.09);border:1px solid rgba(56,189,248,.3);border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--sub);line-height:1.55}
+.install span{flex:1;min-width:0}
+
+.clock{text-align:center;margin:2px 0 18px}
+.clock .t{
+  font-size:44px;line-height:1.05;font-weight:700;letter-spacing:2.5px;
+  font-variant-numeric:tabular-nums;font-feature-settings:"tnum";
+  color:#f2f7ff;text-shadow:0 0 26px rgba(120,180,255,.22);
+}
+.clock .d{font-size:12px;color:var(--sub);margin-top:7px;letter-spacing:.3px}
+.chips{display:flex;gap:7px;justify-content:center;flex-wrap:wrap;margin-top:11px}
+.chip{
+  display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:20px;
+  font-size:11.5px;line-height:1.5;white-space:nowrap;
+  background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.22);color:#bcd7f0;
+}
+.chip.bj{background:rgba(255,255,255,.045);border-color:var(--line);color:var(--sub)}
+.chip .k{color:var(--dim)}
+
+.lg-head{text-align:center;margin:6px 0 20px}
+.lg-head .lg-logo{
+  width:58px;height:58px;margin:0 auto 14px;border-radius:18px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  font-size:26px;font-weight:800;color:#fff;box-shadow:0 16px 38px rgba(230,0,18,.42);
+}
+.lg-head h1{font-size:19px;letter-spacing:.5px;font-weight:700}
+.lg-head .sub{font-size:11.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-top:6px}
+
+.inp{position:relative;margin-bottom:11px}
+.inp .ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--dim);pointer-events:none;display:flex}
+.inp input{padding-left:41px}
+input{
+  width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+  padding:13px;border-radius:12px;font-size:15px;outline:none;transition:.18s;
+}
+input::placeholder{color:var(--dim)}
+input:focus{border-color:rgba(255,77,79,.75);box-shadow:0 0 0 3px rgba(230,0,18,.13)}
+select{
+  width:100%;background:var(--card2);border:1px solid var(--line);color:var(--txt);
+  padding:12px 13px;border-radius:12px;font-size:15px;outline:none;transition:.18s;
+}
+select:focus{border-color:rgba(255,77,79,.75);box-shadow:0 0 0 3px rgba(230,0,18,.13)}
+select option{background:var(--card2);color:var(--txt)}
+
+.enroll-panel{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);border-radius:14px;padding:13px;margin-bottom:12px}
+.enroll-panel .ep-t{font-size:13.5px;font-weight:700;color:#f7dc9b}
+.enroll-panel .ep-d{font-size:11.5px;color:var(--sub);line-height:1.7;margin:6px 0 11px}
+
+button{font-family:inherit;font-size:14px;cursor:pointer}
+.btn{
+  display:block;width:100%;border:1px solid var(--line);background:var(--card2);color:var(--txt);
+  padding:12px 14px;border-radius:12px;transition:.18s;text-align:center;text-decoration:none;
+}
+.btn:hover{border-color:var(--acc)}
+.btn.primary{
+  border:none;color:#fff;font-weight:800;font-size:16px;letter-spacing:2px;padding:15px;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  box-shadow:0 14px 32px rgba(230,0,18,.34), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.btn.primary:active{transform:translateY(1px)}
+.btn.small{width:auto;padding:6px 12px;font-size:12px;border-radius:9px;letter-spacing:0}
+.btn:disabled{background:#1a2439;color:var(--dim);border-color:transparent;box-shadow:none;cursor:not-allowed;transform:none}
+
+.btn-punch{
+  width:100%;border:none;border-radius:16px;padding:18px;color:#fff;
+  font-size:18px;font-weight:800;letter-spacing:4px;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  box-shadow:0 16px 36px rgba(230,0,18,.36), inset 0 1px 0 rgba(255,255,255,.28);
+  transition:.18s;
+}
+.btn-punch:active{transform:translateY(1px) scale(.995);box-shadow:0 8px 20px rgba(230,0,18,.32)}
+.btn-punch:disabled{background:#1a2439;color:var(--dim);box-shadow:none;cursor:not-allowed;letter-spacing:2px}
+
+/* 打卡类型：上班 / 下班 */
+.seg{display:flex;gap:8px;margin-bottom:13px}
+.seg button{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--sub);font-size:15px;font-weight:700}
+.seg button.on{background:linear-gradient(135deg,var(--brand),var(--brand2));border-color:transparent;color:#fff}
+
+.link-btn{
+  display:block;width:100%;text-align:center;background:none;border:none;
+  color:var(--sub);font-size:12.5px;padding:12px 0 4px;
+}
+.link-btn:hover{color:var(--acc)}
+
+.who{
+  display:flex;align-items:center;gap:12px;background:var(--card2);
+  border:1px solid var(--line);border-radius:15px;padding:11px 13px;margin-bottom:13px;flex-wrap:wrap;
+}
+.who .av{
+  width:40px;height:40px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  color:#fff;font-weight:800;font-size:16px;box-shadow:0 8px 20px rgba(230,0,18,.32);
+}
+.who .meta{min-width:0;flex:1}
+.who .nm{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who .no{font-size:11.5px;color:var(--sub);margin-top:2px;letter-spacing:.4px}
+.live{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ok);flex:0 0 auto;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2.2s ease-in-out infinite}
+.live.loading{color:var(--warn)}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.4)}50%{opacity:.55;box-shadow:0 0 0 5px rgba(52,211,153,0)}}
+
+.cam{
+  position:relative;border-radius:18px;overflow:hidden;background:#05080f;
+  border:1px solid var(--line);margin-bottom:13px;min-height:236px;
+}
+.cam video{width:100%;height:100%;display:block;object-fit:cover;min-height:236px;transform:scaleX(-1)}
+.cam canvas{display:none}
+.cam .guide{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.cam .guide i{
+  display:block;width:51%;aspect-ratio:5/7;border-radius:50%;
+  border:2px dashed rgba(56,189,248,.5);box-shadow:inset 0 0 40px rgba(56,189,248,.06);
+}
+.cam .cn{position:absolute;width:24px;height:24px;border:2px solid rgba(56,189,248,.85);pointer-events:none}
+.cam .cn.tl{top:11px;left:11px;border-right:0;border-bottom:0;border-radius:8px 0 0 0}
+.cam .cn.tr{top:11px;right:11px;border-left:0;border-bottom:0;border-radius:0 8px 0 0}
+.cam .cn.bl{bottom:11px;left:11px;border-right:0;border-top:0;border-radius:0 0 0 8px}
+.cam .cn.br{bottom:11px;right:11px;border-left:0;border-top:0;border-radius:0 0 8px 0}
+.cam .ov{
+  position:absolute;left:11px;bottom:11px;display:flex;align-items:center;gap:7px;
+  background:rgba(5,8,15,.72);border:1px solid rgba(255,255,255,.09);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  color:#d3e3f7;font-size:11.5px;padding:5px 11px;border-radius:20px;max-width:calc(100% - 22px);
+}
+.cam .ov .dt{width:6px;height:6px;border-radius:50%;background:var(--acc);flex:0 0 auto;animation:pulse 2.2s ease-in-out infinite}
+.cam .ov.warn .dt{background:var(--warn)} .cam .ov.bad .dt{background:var(--bad)}
+.cam .scan{position:absolute;left:0;right:0;height:64px;pointer-events:none;display:none;
+  background:linear-gradient(180deg,transparent,rgba(56,189,248,.16),transparent)}
+.cam.busy .scan{display:block;animation:scan 1.5s linear infinite}
+@keyframes scan{0%{top:-64px}100%{top:100%}}
+
+.status-card{
+  display:none;align-items:flex-start;gap:10px;border-radius:13px;padding:11px 13px;
+  font-size:13px;line-height:1.6;margin-bottom:12px;border:1px solid transparent;white-space:pre-line;
+}
+.status-card.show{display:flex}
+.status-card .si{
+  width:21px;height:21px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+  font-size:12px;font-weight:800;background:rgba(255,255,255,.13);margin-top:1px;
+}
+.status-card.ok{background:rgba(52,211,153,.1);border-color:rgba(52,211,153,.3);color:#a5ebd1}
+.status-card.ok .si{background:rgba(52,211,153,.22);color:var(--ok)}
+.status-card.bad{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:#fbc4c4}
+.status-card.bad .si{background:rgba(248,113,113,.22);color:var(--bad)}
+.status-card.warn{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.28);color:#f7dc9b}
+.status-card.warn .si{background:rgba(251,191,36,.22);color:var(--warn)}
+.status-card .st{min-width:0}
+
+.privacy{font-size:11px;color:var(--dim);text-align:center;margin-top:16px;line-height:1.75;padding-top:13px;border-top:1px solid var(--line2)}
+.privacy a{color:var(--acc);cursor:pointer;text-decoration:none;border-bottom:1px solid rgba(56,189,248,.35);padding-bottom:1px}
+.foot{text-align:center;margin-top:13px}
+.foot a{color:var(--dim);font-size:11.5px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.foot a:hover{color:var(--acc)}
+
+.modal{position:fixed;inset:0;background:rgba(4,8,18,.82);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+.modal.show{display:flex}
+.modal .inner{
+  background:linear-gradient(180deg,#18233a,#121b2e);border:1px solid var(--line);
+  border-radius:18px;max-width:520px;width:100%;padding:24px;max-height:82vh;overflow:auto;
+  box-shadow:0 30px 70px rgba(0,0,0,.6);
+}
+.modal h2{font-size:17px;margin-bottom:6px;display:flex;align-items:center;gap:9px}
+.modal h2::before{content:"";width:4px;height:16px;border-radius:2px;background:linear-gradient(180deg,var(--brand),var(--brand2))}
+.modal p{font-size:13px;color:var(--sub);line-height:1.95;margin-top:8px;white-space:pre-line}
+.modal .actions{display:flex;gap:10px;margin-top:20px}
+.hidden{display:none !important}
+
+@media(max-width:400px){
+  .clock .t{font-size:38px;letter-spacing:1.5px}
+  .box{padding:17px;border-radius:18px}
+  .btn-punch{letter-spacing:3px;font-size:17px}
+}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">H</div>
+      <div class="bt">
+        <div class="b1">HEYDAY</div>
+        <div class="b2" data-i18n="app_title">考勤系统</div>
+      </div>
+    </div>
+    <div class="lang-switch" id="lang-box"></div>
+  </div>
+
+  <div id="installBanner" class="install hidden">
+    <span id="installText"></span>
+    <button class="btn small primary" onclick="doInstall()" data-i18n="install_btn">安装到主屏幕</button>
+  </div>
+
+  <!-- ============ 登录 ============ -->
+  <div id="loginView">
+    <div class="lg-head">
+      <div class="lg-logo">H</div>
+      <h1 data-i18n="emp_title">员工打卡</h1>
+      <div class="sub" data-i18n="app_title">考勤系统</div>
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9h5M8 13h3"/></svg></span>
+      <input id="empNo" data-i18n-placeholder="employee_no" placeholder="工号" autocapitalize="none" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+      <input id="empPass" type="password" data-i18n-placeholder="pin" placeholder="打卡密码" inputmode="numeric" pattern="[0-9]*">
+    </div>
+    <button class="btn primary" id="btn-login" onclick="login()" data-i18n="enter_punch">进入打卡</button>
+    <button class="btn" id="btn-dd" onclick="dingtalkLogin()" data-i18n="dd_login" style="display:none;margin-top:10px">钉钉一键登录</button>
+    <button class="link-btn" onclick="showRegister()" data-i18n="reg_link">没有账号？自助注册</button>
+    <div class="privacy" id="privacyLine"></div>
+  </div>
+
+  <!-- ============ 自助注册 ============ -->
+  <div id="regView" class="hidden">
+    <div class="lg-head">
+      <div class="lg-logo">H</div>
+      <h1 data-i18n="reg_title">自助注册</h1>
+      <div class="sub" data-i18n="app_title">考勤系统</div>
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></span>
+      <input id="regName" data-i18n-placeholder="name" placeholder="姓名">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9h5M8 13h3"/></svg></span>
+      <input id="regNo" data-i18n-placeholder="employee_no" placeholder="工号（留空自动生成）" autocapitalize="none" autocorrect="off" spellcheck="false">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="3" width="12" height="18" rx="3"/><path d="M11 18h2"/></svg></span>
+      <input id="regPhone" data-i18n-placeholder="phone" placeholder="手机号（选填）" inputmode="tel">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg></span>
+      <input id="regPin" type="password" data-i18n-placeholder="pin" placeholder="打卡密码（至少4位）" inputmode="numeric" pattern="[0-9]*">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3M9 15.5h.01M15 15.5h.01"/></svg></span>
+      <input id="regPin2" type="password" data-i18n-placeholder="reg_pin2" placeholder="确认打卡密码" inputmode="numeric" pattern="[0-9]*">
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></svg></span>
+      <select id="regCountry"></select>
+    </div>
+    <div class="inp">
+      <span class="ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <select id="regTz"></select>
+    </div>
+    <button class="btn primary" id="btn-register" onclick="register()" data-i18n="reg_submit">注册并进入打卡</button>
+    <button class="link-btn" onclick="showLogin()" data-i18n="reg_back_login">已有账号？返回登录</button>
+    <div class="privacy" id="privacyLine3"></div>
+  </div>
+
+  <!-- ============ 打卡 ============ -->
+  <div id="punchView" class="hidden">
+    <div class="clock">
+      <div class="t" id="clockTime">--:--:--</div>
+      <div class="d" id="clockDate"></div>
+      <div class="chips">
+        <div class="chip" id="chipTz"></div>
+        <div class="chip bj" id="chipBj"></div>
+        <div class="chip" id="chipShift"></div>
+      </div>
+    </div>
+
+    <div class="who">
+      <div class="av" id="whoAvatar">·</div>
+      <div class="meta">
+        <div class="nm" id="whoName">—</div>
+        <div class="no" id="whoNo"></div>
+      </div>
+      <div class="live" id="liveState"><span class="dot"></span><span id="liveText"></span></div>
+    </div>
+
+    <div class="seg" id="typeSeg">
+      <button data-t="check_in" class="on" data-i18n="punch_in">上班打卡</button>
+      <button data-t="check_out" data-i18n="punch_out">下班打卡</button>
+    </div>
+
+    <div class="cam" id="camBox">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas"></canvas>
+      <div class="guide"><i></i></div>
+      <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span><span class="cn br"></span>
+      <div class="scan"></div>
+      <div class="ov" id="camHint"><span class="dt"></span><span id="camHintText"></span></div>
+    </div>
+
+    <div id="enrollPanel" class="enroll-panel hidden">
+      <div class="ep-t" data-i18n="enroll_title">首次使用：录入人脸底库</div>
+      <div class="ep-d" data-i18n="enroll_desc">首次打卡前请录入人脸底库：对准摄像头拍一张清晰正脸，仅提取特征值保存用于比对。</div>
+      <button class="btn primary" id="btn-enroll" onclick="enrollFace()" data-i18n="enroll_btn">录入人脸</button>
+    </div>
+
+    <div class="status-card" id="statusLine"></div>
+    <button class="btn-punch" id="btn-punch" onclick="punch()" data-i18n="punch_in">上班打卡</button>
+    <button class="link-btn" onclick="logoutEmp()" id="btn-exit" data-i18n="logout">退出</button>
+    <div class="privacy" id="privacyLine2"></div>
+  </div>
+
+  <div class="foot"><a href="/attendance.html"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 8.9 19a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 5 8.9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span data-i18n="admin_console">管理后台</span></a></div>
+</div>
+
+<!-- 隐私协议弹窗 -->
+<div class="modal" id="privacyModal">
+  <div class="inner">
+    <h2 id="privacyTitle">人脸信息隐私协议</h2>
+    <p id="privacyBody"></p>
+    <div class="actions">
+      <button class="btn primary" onclick="acceptPrivacy()" id="btn-agree" data-i18n="privacy_ok">我已阅读并同意</button>
+      <button class="btn" onclick="declinePrivacy()" id="btn-decline" data-i18n="privacy_decline">不同意，退出</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/att-config.js"></script>
+<script src="assets/checkin.js"></script>
+</body>
+</html>

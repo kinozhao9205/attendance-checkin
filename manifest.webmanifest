@@ -1,0 +1,16 @@
+{
+  "name": "HEYDAY 考勤打卡",
+  "short_name": "考勤打卡",
+  "description": "HEYDAY 海外员工移动端人脸定位打卡",
+  "start_url": "checkin.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070707",
+  "theme_color": "#e60012",
+  "lang": "zh-CN",
+  "icons": [
+    {"src": "assets/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any"},
+    {"src": "assets/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
