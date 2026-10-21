@@ -295,8 +295,13 @@ const I18N = {
 
 const LANGS = ['zh', 'en', 'uz'];
 const LANG_LABELS = { zh: '中文', en: 'EN', uz: 'UZ' };
-let currentLang = localStorage.getItem('att_lang') || 'zh';
-if (!LANGS.includes(currentLang)) currentLang = 'zh';
+// 首次进入：按手机/浏览器系统语言自动选择（zh/en/uz），之后以用户手动选择为准
+let currentLang = localStorage.getItem('att_lang');
+if (!currentLang || !LANGS.includes(currentLang)) {
+  const nav = String((typeof navigator !== 'undefined' && (navigator.language || navigator.userLanguage)) || '').toLowerCase();
+  currentLang = nav.indexOf('uz') === 0 ? 'uz' : (nav.indexOf('en') === 0 ? 'en' : (nav.indexOf('zh') === 0 ? 'zh' : 'zh'));
+  try { localStorage.setItem('att_lang', currentLang); } catch (e) {}
+}
 
 function tr(key, fallback) {
   const dict = I18N[currentLang] || I18N.zh;

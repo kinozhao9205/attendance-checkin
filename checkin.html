@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="HEYDAY">
-<script src="assets/i18n.js?v=6"></script>
-<script src="assets/vendor/face-api.min.js?v=6"></script>
+<script src="assets/i18n.js?v=7"></script>
+<script src="assets/vendor/face-api.min.js?v=7"></script>
 <style>
 :root{
   --bg:#0b1020; --card:#131c30; --card2:#0f1729; --line:#22304d; --line2:#1a2740;
@@ -222,6 +222,13 @@ button{font-family:inherit;font-size:14px;cursor:pointer}
 .modal h2{font-size:17px;margin-bottom:6px;display:flex;align-items:center;gap:9px}
 .modal h2::before{content:"";width:4px;height:16px;border-radius:2px;background:linear-gradient(180deg,var(--brand),var(--brand2))}
 .modal p{font-size:13px;color:var(--sub);line-height:1.95;margin-top:8px;white-space:pre-line}
+.pv-tabs{display:flex;gap:8px;margin:14px 0 4px}
+.pv-tabs button{
+  flex:1;padding:8px 0;border-radius:10px;cursor:pointer;font-family:inherit;font-size:12.5px;
+  background:rgba(255,255,255,.04);border:1px solid var(--line2);color:var(--dim);transition:.18s;
+}
+.pv-tabs button.active{background:rgba(56,189,248,.16);border-color:rgba(56,189,248,.45);color:#cfeaff;font-weight:600}
+.pv-hint{font-size:11px;color:var(--dim);margin-top:14px;line-height:1.7}
 .modal .actions{display:flex;gap:10px;margin-top:20px}
 .hidden{display:none !important}
 
@@ -371,7 +378,9 @@ button{font-family:inherit;font-size:14px;cursor:pointer}
 <div class="modal" id="privacyModal">
   <div class="inner">
     <h2 id="privacyTitle">人脸信息隐私协议</h2>
+    <div class="pv-tabs" id="pvTabs"></div>
     <p id="privacyBody"></p>
+    <div class="pv-hint" id="pvHint"></div>
     <div class="actions">
       <button class="btn primary" onclick="acceptPrivacy()" id="btn-agree" data-i18n="privacy_ok">我已阅读并同意</button>
       <button class="btn" onclick="declinePrivacy()" id="btn-decline" data-i18n="privacy_decline">不同意，退出</button>
@@ -379,7 +388,7 @@ button{font-family:inherit;font-size:14px;cursor:pointer}
   </div>
 </div>
 
-<script src="assets/att-config.js?v=6"></script>
-<script src="assets/checkin.js?v=6"></script>
+<script src="assets/att-config.js?v=7"></script>
+<script src="assets/checkin.js?v=7"></script>
 </body>
 </html>

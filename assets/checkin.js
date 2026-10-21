@@ -43,7 +43,39 @@ function renderPrivacy() {
   if (b) b.innerHTML = line;
   if (c) c.innerHTML = line;
 }
-function showPrivacy() { $('privacyTitle').textContent = tr('privacy_title'); $('privacyBody').textContent = PRIVACY_BODY[currentLang] || PRIVACY_BODY.zh; $('privacyModal').classList.add('show'); }
+// 隐私弹窗内自带三语切换：默认跟随手机/浏览器语言
+const PRIVACY_LANGS = [['zh', '中文'], ['en', 'English'], ['uz', "O'zbekcha"]];
+let _pvLang = null;
+function pickPrivacyLang() {
+  const saved = localStorage.getItem('att_lang');
+  if (saved && PRIVACY_BODY[saved]) return saved;
+  const nav = String(navigator.language || navigator.userLanguage || '').toLowerCase();
+  if (nav.indexOf('uz') === 0) return 'uz';
+  if (nav.indexOf('zh') === 0) return 'zh';
+  if (nav.indexOf('en') === 0) return 'en';
+  return PRIVACY_BODY[currentLang] ? currentLang : 'zh';
+}
+function renderPrivacyTabs() {
+  const box = $('pvTabs');
+  if (!box) return;
+  box.innerHTML = PRIVACY_LANGS.map(([k, label]) =>
+    '<button type="button" class="' + (k === _pvLang ? 'active' : '') + '" onclick="setPrivacyLang(\'' + k + '\')">' + label + '</button>'
+  ).join('');
+}
+function renderPrivacyBody() {
+  const el = $('privacyBody');
+  if (el) el.textContent = PRIVACY_BODY[_pvLang] || PRIVACY_BODY.zh;
+  const hint = $('pvHint');
+  if (hint) hint.textContent = '如需其他语言，请点击上方切换 · Switch language above · Boshqa til uchun yuqoridan tanlang';
+}
+function setPrivacyLang(l) { _pvLang = l; renderPrivacyTabs(); renderPrivacyBody(); }
+function showPrivacy() {
+  $('privacyTitle').textContent = tr('privacy_title');
+  if (!_pvLang) _pvLang = pickPrivacyLang();
+  renderPrivacyTabs();
+  renderPrivacyBody();
+  $('privacyModal').classList.add('show');
+}
 function acceptPrivacy() { localStorage.setItem('att_privacy_agreed', '1'); $('privacyModal').classList.remove('show'); }
 function declinePrivacy() { $('privacyModal').classList.remove('show'); logoutEmp(); }
 if (!localStorage.getItem('att_privacy_agreed')) setTimeout(showPrivacy, 600);
