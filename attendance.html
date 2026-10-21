@@ -134,7 +134,7 @@
         <div style="flex:1"><label>类型</label><select id="h_type"><option value="public">法定假日</option><option value="makeup">调休补班(周末上班)</option></select></div>
         <button class="btn" onclick="addHol()">添加</button>
       </div>
-      <div class="muted">已内置 2026 中国（含调休补班）、美国、日本主要节假日，可在此增删。</div>
+      <div class="muted">已内置 2026 中国（含调休补班）、乌兹别克斯坦（含开斋节/宰牲节/纳吾热孜节）、美国、日本主要节假日；打卡时自动按员工所属国家匹配。</div>
     </div>
     <div class="card"><h3>节假日列表</h3>
       <div class="row" style="margin-bottom:10px"><label style="margin:0">筛选国家</label><select id="h_filter" onchange="loadHol()"><option value="">全部</option></select></div>
@@ -227,10 +227,10 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="assets/i18n.js?v=9"></script>
-<script src="assets/face-models.js?v=9"></script>
-<script src="assets/att-config.js?v=9"></script>
-<script src="assets/attendance.js?v=9"></script>
+<script src="assets/i18n.js?v=10"></script>
+<script src="assets/face-models.js?v=10"></script>
+<script src="assets/att-config.js?v=10"></script>
+<script src="assets/attendance.js?v=10"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});</script>
 </body>
 </html>

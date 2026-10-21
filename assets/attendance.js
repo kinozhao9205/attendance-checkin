@@ -16,8 +16,15 @@ let MODELS_OK = false;
 const $ = (id) => document.getElementById(id);
 function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; setTimeout(() => (e.style.display = 'none'), 2200); }
 async function api(path, opts = {}) {
-  const r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...auth(), ...(opts.headers || {}) } });
-  const body = await r.json().catch(() => ({}));
+  let r, body;
+  try {
+    r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...auth(), ...(opts.headers || {}) } });
+    body = await r.json().catch(() => ({}));
+  } catch (e) {
+    // 网络中断 / 请求体过大被掐断：必须给出反馈，而不是静默无反应
+    $('banner').style.display = 'block';
+    return { ok: false, status: 0, body: { error: '网络请求失败（' + (e && e.message ? e.message : 'unknown') + '），请重试' } };
+  }
   if (r.status === 401) { $('banner').style.display = 'block'; }
   return { ok: r.ok && body.ok, status: r.status, body };
 }
@@ -144,12 +151,38 @@ async function extractEnroll() {
     $('enrollBtn').disabled = false;
   } catch (e) { $('enrollStatus').textContent = '提取失败：' + e.message; }
 }
+/* 照片压缩：手机原图动辄 4~8MB，base64 后超出后端请求体上限会被掐断（表现为「点保存没反应」）。
+ * 特征已在本地提取完毕，压缩不影响识别精度。 */
+function shrinkPhoto(dataUrl, maxEdge = 720, quality = 0.85) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * scale));
+      c.height = Math.max(1, Math.round(img.height * scale));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      try { resolve(c.toDataURL('image/jpeg', quality)); } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
 async function doEnroll() {
-  if (!enrollDescriptor) return;
-  const photo = $('enrollImg').src;
-  const r = await api('/api/att/employees/' + enrollId + '/enroll', { method: 'POST', body: JSON.stringify({ photo, descriptor: enrollDescriptor }) });
-  if (r.ok) { toast('人脸底库已建立'); closeModal(); loadEmployees(); }
-  else toast('录入失败：' + (r.body.error || ''));
+  if (!enrollDescriptor || !enrollId) return;
+  const btn = $('enrollBtn');
+  btn.disabled = true;
+  $('enrollStatus').textContent = '正在保存人脸底库…';
+  try {
+    const photo = await shrinkPhoto($('enrollImg').src);
+    const r = await api('/api/att/employees/' + enrollId + '/enroll', { method: 'POST', body: JSON.stringify({ photo, descriptor: enrollDescriptor }) });
+    if (r.ok) { toast('人脸底库已建立'); closeModal(); loadEmployees(); }
+    else { toast('录入失败：' + (r.body.error || '')); $('enrollStatus').textContent = '保存失败：' + (r.body.error || '') + '，可重试'; btn.disabled = false; }
+  } catch (e) {
+    toast('保存异常：' + (e && e.message ? e.message : 'unknown'));
+    $('enrollStatus').textContent = '保存异常，请重试';
+    btn.disabled = false;
+  }
 }
 
 /* ---------- 规则 ---------- */
