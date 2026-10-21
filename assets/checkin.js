@@ -21,6 +21,7 @@ const $ = (id) => document.getElementById(id);
 let currentEmp = null;
 let stream = null;
 let MODELS_OK = false;
+let TINY_LM = false;   // 用 tiny 关键点模型还是标准版（缺文件时自动退回标准版）
 let TYPE = 'check_in';
 let punchBtn = $('btn-punch');
 
@@ -31,9 +32,9 @@ const _LANG_LOCALE = { zh: 'zh-CN', en: 'en-US', uz: 'uz-UZ' };
 
 // ---------------- 隐私协议 ----------------
 const PRIVACY_BODY = {
-  zh: '1. 为完成打卡身份核验，系统将通过摄像头实时进行人脸识别。\n2. 识别过程仅在本机浏览器内提取人脸特征值用于比对，原始人脸照片不会上传、不会存储。\n3. 您的面部信息不会用于考勤以外的任何用途，也不会向任何第三方提供、出售或披露。\n4. 打卡记录仅保存工号、时间、地理位置与识别结果，用于考勤统计。\n5. 如有疑问请联系管理员。',
-  en: '1. For identity verification, the camera performs real-time face recognition.\n2. Features are extracted locally in your browser for comparison only; no facial photos are uploaded or stored.\n3. Your facial data is never used for other purposes or shared with any third party.\n4. Only employee ID, time, location and result are saved for attendance statistics.\n5. Contact the administrator if you have questions.',
-  uz: "1. Shaxsni tekshirish uchun kamera real vaqtda yuzni tanishni amalga oshiradi.\n2. Xususiyatlar faqat taqqoslash uchun brauzeringizda chiqariladi; yuz suratlari yuklanmaydi va saqlanmaydi.\n3. Yuz ma'lumotlari boshqa maqsadlarda ishlatilmaydi va uchinchi shaxslarga berilmaydi.\n4. Faqat ishchi raqami, vaqt, joylashuv va natija saqlanadi.\n5. Savollar bo'lsa administratorga murojaat qiling."
+  zh: '1. 为完成考勤身份核验，首次录入时系统会采集您拍摄的人脸照片，并仅在手机浏览器内提取人脸特征值；打卡时通过摄像头实时比对。\n2. 识别过程仅在本机浏览器内完成，原始人脸照片不会上传、不会存储。\n3. 您的面部信息不会用于考勤以外的任何用途，也不会向任何第三方提供、出售或披露。\n4. 打卡记录仅保存工号、时间、地理位置与识别结果，用于考勤统计。\n5. 如有疑问请联系管理员。',
+  en: '1. For attendance verification, a face photo you take is used once at enrollment to extract face features locally in your phone browser; punches are compared live through the camera.\n2. All processing happens in your browser — the original photo is never uploaded or stored.\n3. Your facial data is never used for other purposes or shared with any third party.\n4. Only employee ID, time, location and result are saved for attendance statistics.\n5. Contact the administrator if you have questions.',
+  uz: "1. Davomatni tekshirish uchun ro'yxatga olishda siz olgan yuz suratidan faqat telefon brauzerida yuz xususiyatlari chiqariladi; belgilashda kamera orqali real vaqtda taqqoslanadi.\n2. Barcha ishlov brauzerda bajariladi — asl surat yuklanmaydi va saqlanmaydi.\n3. Yuz ma'lumotlari boshqa maqsadlarda ishlatilmaydi va uchinchi shaxslarga berilmaydi.\n4. Faqat ishchi raqami, vaqt, joylashuv va natija saqlanadi.\n5. Savollar bo'lsa administratorga murojaat qiling."
 };
 function renderPrivacy() {
   const line = `<span>${tr('privacy_line')} </span><a onclick="showPrivacy()">${tr('privacy_link')}</a>`;
@@ -208,28 +209,95 @@ async function register() {
   if (btn) btn.disabled = false;
 }
 
-// ---------------- 首次自助录入人脸底库 ----------------
-async function enrollFace() {
+// ---------------- 首次自助录入人脸底库（拍照识别，不再实时识别） ----------------
+// 海外网络慢：录入阶段不开实时视频流、也不预加载模型，
+// 点「拍照」直接调系统相机 → 用户拍照那几秒里并行下载模型 → 回来后只对照片做一次识别。
+function enrollFace() {
+  if (!currentEmp) { setStatus(tr('need_login'), 'warn'); return; }
+  if (!localStorage.getItem('att_privacy_agreed')) { showPrivacy(); return; }
+  const inp = $('enrollFile');
+  if (!inp) return;
+  inp.value = '';
+  setStatus(tr('enroll_photo_wait'), 'warn');
+  // 相机打开期间后台预载模型，照片回来时通常已就绪
+  if (!MODELS_OK) loadFaceModel().catch(() => {});
+  inp.click();
+}
+
+async function onEnrollPhoto(ev) {
+  const f = ev && ev.target && ev.target.files && ev.target.files[0];
+  if (!f) return;
   if (!currentEmp) { setStatus(tr('need_login'), 'warn'); return; }
   if (!localStorage.getItem('att_privacy_agreed')) { showPrivacy(); return; }
   const btn = $('btn-enroll'); if (btn) btn.disabled = true;
-  setStatus(tr('recognizing'), 'warn');
-  setCameraState('busy', tr('recognizing'));
+  stopLiveCamera();
+  setStatus(tr('enroll_reading'), 'warn');
+  setCameraState('busy', tr('enroll_reading'));
   try {
-    const descriptor = await captureDescriptor();
+    const img = await loadPhoto(f);
+    const canvas = photoToCanvas(img);          // 长边压到 480，识别更快
+    showShot(img.src || URL.createObjectURL(f));
+    const descriptor = await descriptorFrom(canvas);
+    setStatus(tr('enroll_saving'), 'warn');
     const r = await attFetch('/api/att/emp/enroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withTg({ descriptor })) });
     const d = await r.json();
     if (!r.ok || !d.ok) throw new Error(tr('enroll_fail', d && d.error));
     currentEmp.has_face = true;
     renderEnrollUI();
+    clearShot();
     setStatus(tr('enroll_ok'), 'ok');
-    setCameraState('ready', tr('model_ready'));
+    // 录入完成后才开实时摄像头、备好模型，打卡时不用再等
+    setCameraState(MODELS_OK ? 'ready' : 'loading', MODELS_OK ? tr('model_ready') : tr('loading_model'));
+    startCamera();
+    loadFaceModel().then(markModelReady).catch(() => {});
   } catch (e) {
     setStatus(tr('enroll_fail') + '：' + e.message, 'bad');
-    setCameraState('ready', tr('cam_align'));
+    setCameraState('photo', tr('enroll_retry_hint'));
   }
   if (btn) btn.disabled = false;
 }
+
+// 读文件为可绘制的图片（优先 createImageBitmap，自动按 EXIF 摆正）
+function loadPhoto(file) {
+  if (window.createImageBitmap) {
+    return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => loadPhotoByImg(file));
+  }
+  return loadPhotoByImg(file);
+}
+function loadPhotoByImg(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => resolve(im);
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error(tr('photo_bad'))); };
+    im.src = url;
+  });
+}
+function photoToCanvas(img) {
+  const iw = img.width || img.naturalWidth || 640;
+  const ih = img.height || img.naturalHeight || 480;
+  const MAX = 480;
+  const s = Math.min(1, MAX / Math.max(iw, ih));
+  const W = Math.max(1, Math.round(iw * s)), H = Math.max(1, Math.round(ih * s));
+  const c = getWorkCanvas(W, H);
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(img, 0, 0, W, H);
+  return c;
+}
+
+function showShot(url) {
+  const el = $('shotImg'), v = $('video'), ph = $('camPh');
+  if (el) { el.src = url; el.classList.remove('hidden'); }
+  if (v) v.classList.add('hidden');
+  if (ph) ph.classList.add('hidden');
+}
+function clearShot() {
+  const el = $('shotImg'), v = $('video');
+  if (el) { el.classList.add('hidden'); el.removeAttribute('src'); }
+  if (v) v.classList.remove('hidden');
+}
+
 function renderEnrollUI() {
   const need = currentEmp && !currentEmp.has_face;
   const panel = $('enrollPanel');
@@ -237,6 +305,13 @@ function renderEnrollUI() {
   const seg = $('typeSeg'), pb = $('btn-punch');
   if (seg) seg.classList.toggle('hidden', !!need);
   if (pb) pb.classList.toggle('hidden', !!need);
+  const ph = $('camPh'), v = $('video');
+  if (v) v.classList.toggle('hidden', !!need);
+  if (ph) ph.classList.toggle('hidden', !need);
+  const pt = $('camPhText'); if (pt) pt.textContent = need ? tr('enroll_photo_hint') : '';
+  const live = $('liveText');
+  if (live && need) { const l = $('liveState'); if (l) l.classList.remove('loading'); live.textContent = tr('face_pending'); }
+  if (!need) clearShot();
 }
 
 // ---------------- 员工信息 / 时区时钟 ----------------
@@ -256,7 +331,15 @@ function enterPunchView(emp) {
   if (!emp.has_face) { setStatus(tr('enroll_title'), 'warn'); }
   const live = $('liveState'); if (live) live.classList.add('loading');
   $('liveText').textContent = tr('loading');
-  startCamera();
+  if (emp.has_face) {
+    startCamera();
+    // 已录脸的员工：进入页面后再后台下模型，不阻塞首屏
+    setTimeout(() => { loadFaceModel().catch(() => { setCameraState('error', tr('camera_error')); }); }, 400);
+  } else {
+    // 未录脸：不启动实时视频流、不预载模型，等用户拍照时才加载
+    stopLiveCamera();
+    setCameraState('photo', tr('enroll_photo_hint'));
+  }
 }
 
 function _utcMs() { const n = new Date(); return n.getTime() + n.getTimezoneOffset() * 60000; }
@@ -317,50 +400,72 @@ function setCameraState(state, text) {
   const cam = $('camBox'); if (cam) cam.classList.toggle('busy', state === 'busy');
 }
 function renderCameraHint() {
-  const map = { idle: tr('cam_align'), loading: tr('loading_model'), ready: tr('model_ready'), busy: tr('recognizing'), error: tr('camera_error') };
+  const map = { idle: tr('cam_align'), loading: tr('loading_model'), ready: tr('model_ready'), busy: tr('recognizing'), error: tr('camera_error'), photo: tr('enroll_photo_hint') };
   setCameraState(_camState, map[_camState]);
 }
 async function startCamera() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 360 } }, audio: false });
     $('video').srcObject = stream;
-    if (_camState === 'idle' || _camState === 'error') setCameraState(MODELS_OK ? 'ready' : 'loading', MODELS_OK ? tr('model_ready') : tr('loading_model'));
+    if (_camState === 'idle' || _camState === 'error' || _camState === 'photo') setCameraState(MODELS_OK ? 'ready' : 'loading', MODELS_OK ? tr('model_ready') : tr('loading_model'));
   } catch (e) { setCameraState('error', tr('camera_error')); }
 }
+function stopLiveCamera() {
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  const v = $('video'); if (v) v.srcObject = null;
+}
 async function loadFaceModel() {
+  if (window.__faceModelLoading) return window.__faceModelLoading;
   const m = window.faceapi;
   if (!m) throw new Error('face-api load failed');
   if (m.nets.faceRecognitionNet.params) { MODELS_OK = true; return; }
-  await Promise.all([
-    m.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-    m.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
-    m.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-  ]);
-  MODELS_OK = true;
-  markModelReady();
+  window.__faceModelLoading = (async () => {
+    await m.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    // 关键点：优先 tiny（小、快），文件缺失时退回标准版，避免整条链路失败
+    try { await m.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL); TINY_LM = true; }
+    catch (e) { await m.nets.faceLandmark68Net.loadFromUri(MODEL_URL); TINY_LM = false; }
+    await m.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    MODELS_OK = true;
+    markModelReady();
+  })().catch((e) => { window.__faceModelLoading = null; throw e; });
+  return window.__faceModelLoading;
 }
 function markModelReady() {
   const live = $('liveState'); if (live) live.classList.remove('loading');
+  if (currentEmp && !currentEmp.has_face) { $('liveText').textContent = tr('face_pending'); return; }
   $('liveText').textContent = tr('model_ready');
   if (_camState === 'loading' || _camState === 'idle') setCameraState('ready', tr('model_ready'));
 }
 let _work = null;
-function getWorkCanvas(w, h) { if (!_work) _work = document.createElement('canvas'); _work.width = w; _work.height = h; return _work; }
-async function captureDescriptor() {
-  if (!MODELS_OK) { setCameraState('loading', tr('loading_model')); }
+function getWorkCanvas(w, h) {
+  if (!_work) _work = document.createElement('canvas');
+  if (_work.width !== w || _work.height !== h) { _work.width = w; _work.height = h; }
+  return _work;
+}
+// 对一张静态图做一次识别：先 320 输入，失败再 512 兜底（兼顾速度与远处人脸）
+async function descriptorFrom(canvas) {
   await loadFaceModel();
+  const fa = window.faceapi;
+  let det = await fa.detectSingleFace(canvas, new fa.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 })).withFaceLandmarks(TINY_LM).withFaceDescriptor();
+  if (!det) {
+    det = await fa.detectSingleFace(canvas, new fa.TinyFaceDetectorOptions({ inputSize: 512, scoreThreshold: 0.25 })).withFaceLandmarks(TINY_LM).withFaceDescriptor();
+  }
+  if (!det) throw new Error(tr('enroll_photo_bad'));
+  return Array.from(det.descriptor);
+}
+async function captureDescriptor() {
+  if (!MODELS_OK) { setCameraState('loading', tr('loading_model')); await loadFaceModel(); }
   const video = $('video');
   const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
   const W = 320, H = Math.max(1, Math.round(vh / vw * W));
   const work = getWorkCanvas(W, H);
   work.getContext('2d').drawImage(video, 0, 0, W, H);
-  const det = await window.faceapi.detectSingleFace(work, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })).withFaceLandmarks(true).withFaceDescriptor();
+  const det = await window.faceapi.detectSingleFace(work, new window.faceapi.TinyFaceDetectorOptions({ inputSize: 160, scoreThreshold: 0.5 })).withFaceLandmarks(TINY_LM).withFaceDescriptor();
   if (!det) throw new Error(tr('face_not_found'));
   return Array.from(det.descriptor);
 }
 setCameraState('idle', '');
 renderCameraHint();
-loadFaceModel().catch(() => { setCameraState('error', tr('camera_error')); });
 
 // ---------------- 定位 ----------------
 function locate() {
@@ -378,7 +483,7 @@ function locate() {
 async function punch() {
   if (!localStorage.getItem('att_privacy_agreed')) { showPrivacy(); return; }
   if (!currentEmp) { setStatus(tr('need_login'), 'warn'); return; }
-  if (!currentEmp.has_face) { setStatus(tr('bad_descriptor'), 'warn'); return; }
+  if (!currentEmp.has_face) { setStatus(tr('enroll_photo_hint'), 'warn'); return; }
   punchBtn.disabled = true;
   setStatus(tr('recognizing'), 'warn');
   setCameraState('busy', tr('recognizing'));
@@ -441,6 +546,7 @@ function doInstall() {
 
 // ---------------- 初始化 ----------------
 $('regCountry') && $('regCountry').addEventListener('change', onRegCountryChange);
+$('enrollFile') && $('enrollFile').addEventListener('change', onEnrollPhoto);
 if (IS_DD && $('btn-dd')) $('btn-dd').style.display = 'block'; // 钉钉环境显示一键登录
 if (IS_TG) loadScript('https://telegram.org/js/telegram-web-app.js').then(() => {
   try { const tg = window.Telegram.WebApp; tg.ready(); tg.expand(); } catch (e) {}
