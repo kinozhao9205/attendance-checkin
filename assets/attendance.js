@@ -26,7 +26,7 @@ async function api(path, opts = {}) {
 async function mockLogin() {
   const pin = ($('adminPin') && $('adminPin').value.trim()) || '';
   const r = await api('/api/auth/mock-login', { method: 'POST', body: JSON.stringify({ staffId: 'stf_01', pin }) });
-  if (r.body.ok) { localStorage.setItem('att_token', r.body.token); $('banner').style.display = 'none'; toast('已登录'); boot(); }
+  if (r.body.ok) { localStorage.setItem('att_token', r.body.token); $('banner').style.display = 'none'; toast('已登录'); boot(); ensureModels(true).catch(() => {}); }
   else toast(r.body.code === 'bad_admin_pin' ? '管理密码错误' : '登录失败');
 }
 
@@ -83,27 +83,34 @@ function openEnroll(id, name) {
   ensureModels().catch(() => {});
 }
 function closeModal() { $('enrollModal').style.display = 'none'; }
-async function ensureModels() {
+async function ensureModels(silent) {
   if (MODELS_OK) return true;
-  $('enrollStatus').textContent = '加载人脸模型…';
-  $('enrollRetry').style.display = 'none';
-  try {
-    await window.FaceModels.load({
-      tinyLandmark: false,           // 后台录入用标准关键点，精度更高
-      onProgress: (i, n, label) => {
-        $('enrollStatus').textContent = i === n
-          ? '加载人脸模型 ' + i + '/' + n + '（' + label + '，约 6MB，首次稍慢）…'
-          : '加载人脸模型 ' + i + '/' + n + '（' + label + '）…';
-      },
-    });
-    MODELS_OK = true;
-    $('enrollStatus').textContent = '模型已就绪，正在提取人脸特征…';
-    return true;
-  } catch (e) {
-    $('enrollStatus').textContent = '模型加载失败：' + (e && e.message ? e.message : '网络异常') + '（可点「重新加载模型」重试）';
-    $('enrollRetry').style.display = '';
-    return false;
-  }
+  if (window.__fmLoading) return window.__fmLoading;      // 登录预热与点录入同时触发时复用同一次加载
+  const setText = (t) => { if (!silent) $('enrollStatus').textContent = t; };
+  setText('加载人脸模型…');
+  if (!silent) $('enrollRetry').style.display = 'none';
+  window.__fmLoading = (async () => {
+    try {
+      await window.FaceModels.load({
+        tinyLandmark: false,           // 后台录入用标准关键点，精度更高
+        onProgress: (i, n, label) => {
+          setText(i === n
+            ? '加载人脸模型 ' + i + '/' + n + '（' + label + '，约 6MB，首次稍慢）…'
+            : '加载人脸模型 ' + i + '/' + n + '（' + label + '）…');
+        },
+      });
+      MODELS_OK = true;
+      setText('模型已就绪，正在提取人脸特征…');
+      return true;
+    } catch (e) {
+      if (!silent) {
+        $('enrollStatus').textContent = '模型加载失败：' + (e && e.message ? e.message : '网络异常') + '（可点「重新加载模型」重试）';
+        $('enrollRetry').style.display = '';
+      }
+      return false;
+    } finally { window.__fmLoading = null; }
+  })();
+  return window.__fmLoading;
 }
 async function retryModels() {
   window.FaceModels.reset();
