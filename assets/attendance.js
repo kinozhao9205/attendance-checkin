@@ -1,6 +1,14 @@
 'use strict';
 /* 人脸考勤管理后台 */
-const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+const MODEL_URL = 'assets/vendor/models';
+// API 地址解析：?api= 参数 > att-config.js 的 window.ATT_API_BASE > 本地记忆 > 同源（与员工打卡页同规则）
+(function () {
+  const q = new URLSearchParams(location.search).get('api');
+  if (q) { window.ATT_API_BASE = q.replace(/\/+$/, ''); localStorage.setItem('att_api_base', window.ATT_API_BASE); }
+  else if (!window.ATT_API_BASE) { window.ATT_API_BASE = localStorage.getItem('att_api_base') || ''; }
+  window.ATT_API_BASE = (window.ATT_API_BASE || '').replace(/\/+$/, '');
+})();
+const API = window.ATT_API_BASE || '';
 const token = localStorage.getItem('att_token') || '';
 const auth = () => (token ? { Authorization: 'Bearer ' + token } : {});
 let COUNTRIES = {};
@@ -9,7 +17,7 @@ let MODELS_OK = false;
 const $ = (id) => document.getElementById(id);
 function toast(t) { const e = $('toast'); e.textContent = t; e.style.display = 'block'; setTimeout(() => (e.style.display = 'none'), 2200); }
 async function api(path, opts = {}) {
-  const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', ...auth(), ...(opts.headers || {}) } });
+  const r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json', ...auth(), ...(opts.headers || {}) } });
   const body = await r.json().catch(() => ({}));
   if (r.status === 401) { $('banner').style.display = 'block'; }
   return { ok: r.ok && body.ok, status: r.status, body };
@@ -17,9 +25,10 @@ async function api(path, opts = {}) {
 
 /* ---------- 鉴权 ---------- */
 async function mockLogin() {
-  const r = await api('/api/auth/mock-login', { method: 'POST', body: JSON.stringify({ staffId: 'stf_01' }) });
-  if (r.body.ok) { localStorage.setItem('att_token', r.body.token); $('banner').style.display = 'none'; toast('已体验登录'); boot(); }
-  else toast('登录失败');
+  const pin = ($('adminPin') && $('adminPin').value.trim()) || '';
+  const r = await api('/api/auth/mock-login', { method: 'POST', body: JSON.stringify({ staffId: 'stf_01', pin }) });
+  if (r.body.ok) { localStorage.setItem('att_token', r.body.token); $('banner').style.display = 'none'; toast('已登录'); boot(); }
+  else toast(r.body.code === 'bad_admin_pin' ? '管理密码错误' : '登录失败');
 }
 
 /* ---------- Tabs ---------- */
@@ -191,7 +200,7 @@ async function exportCsv() {
   if ($('rec_from').value) p.set('from', $('rec_from').value);
   if ($('rec_to').value) p.set('to', $('rec_to').value);
   const month = ($('rec_from').value ? $('rec_from').value.slice(0, 7) : new Date().toISOString().slice(0, 7));
-  const url = '/api/att/stats?export=csv&month=' + month + '&' + p.toString();
+  const url = API + '/api/att/stats?export=csv&month=' + month + '&' + p.toString();
   const r = await fetch(url, { headers: auth() });
   if (!r.ok) { toast('导出失败'); return; }
   const blob = await r.blob();

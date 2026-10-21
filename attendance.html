@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>人脸考勤管理后台</title>
+<script defer src="assets/vendor/face-api.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f6fb; color: #1c2433; }
+  header { background: #0b1020; color: #fff; padding: 14px 22px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 17px; margin: 0; }
+  header .back { color: #9fb0d6; text-decoration: none; font-size: 13px; }
+  .tabs { display: flex; gap: 4px; padding: 10px 18px 0; background: #0b1020; flex-wrap: wrap; }
+  .tabs button { border: none; background: transparent; color: #9fb0d6; padding: 10px 14px; font-size: 14px; cursor: pointer; border-radius: 8px 8px 0 0; }
+  .tabs button.on { background: #f4f6fb; color: #1c2433; font-weight: 600; }
+  .page { max-width: 1080px; margin: 0 auto; padding: 20px; }
+  .card { background: #fff; border: 1px solid #e3e8f2; border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 14px; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  label { font-size: 12px; color: #6b779c; display: block; margin-bottom: 5px; }
+  input, select { width: 100%; padding: 9px 10px; border: 1px solid #d4dbe8; border-radius: 8px; font-size: 14px; }
+  .btn { border: none; border-radius: 8px; padding: 9px 16px; font-size: 14px; cursor: pointer; background: #2f6fed; color: #fff; }
+  .btn.s { padding: 5px 10px; font-size: 12px; }
+  .btn.ghost { background: #eef2fb; color: #2f6fed; }
+  .btn.danger { background: #fdeaea; color: #d23b3b; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #eef1f7; }
+  th { color: #6b779c; font-weight: 600; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; background: #eef2fb; color: #2f6fed; }
+  .pill.g { background: #e6f7ee; color: #1d9d5b; }
+  .pill.r { background: #fdeaea; color: #d23b3b; }
+  .pill.y { background: #fff4e0; color: #c98a00; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .modal { position: fixed; inset: 0; background: rgba(8,12,28,.55); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal .box { background: #fff; border-radius: 14px; padding: 20px; width: 100%; max-width: 420px; }
+  .modal img { width: 160px; height: 200px; object-fit: cover; border-radius: 10px; display: block; margin: 10px auto; border: 1px solid #e3e8f2; }
+  .toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); background: #1c2433; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 13px; display: none; z-index: 99; }
+  .muted { color: #8a93a8; font-size: 12px; }
+  .banner { background: #fff4e0; color: #8a5a00; padding: 10px 16px; font-size: 13px; display: none; }
+  .banner button { margin-left: 10px; }
+  /* 语言切换器（与打卡页同款三段式：中文 | EN | UZ） */
+  .lang-switch { display: inline-flex; border: 1px solid #2c3a63; border-radius: 20px; overflow: hidden; background: #0e1430; align-self: center; }
+  .lang-switch .lang-btn { background: transparent; color: #9fb0d6; border: none; padding: 5px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .lang-switch .lang-btn.active { background: #2f6fed; color: #fff; }
+  /* 打卡范围表单 */
+  .gf-form { display: none; }
+  .gf-form.show { display: block; }
+  .seg { display: flex; gap: 8px; margin: 6px 0 12px; }
+  .seg button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #d4dbe8; background: #fff; color: #1c2433; font-size: 14px; }
+  .seg button.on { background: #2f6fed; border-color: #2f6fed; color: #fff; font-weight: 600; }
+  .geo-btn { cursor: pointer; color: #2f6fed; text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤳 人脸考勤管理后台</h1>
+  <a class="back" href="checkin.html">← 返回打卡页</a>
+  <div class="lang-switch" id="lang-box"></div>
+  <a class="back" href="checkin.html" style="margin-left:auto">海外员工打卡 →</a>
+</header>
+<div class="banner" id="banner">未登录：<input id="adminPin" type="password" placeholder="管理密码" style="width:130px;padding:4px 8px;margin:0 6px;border:1px solid #e0c080;border-radius:6px"><button class="btn s" onclick="mockLogin()">管理员登录</button></div>
+<div class="tabs" id="tabs">
+  <button class="on" data-t="emp">员工 / 人脸底库</button>
+  <button data-t="rule">考勤规则</button>
+  <button data-t="hol">节假日</button>
+  <button data-t="rec">打卡记录</button>
+  <button data-t="gf">打卡范围</button>
+  <button data-t="dt">钉钉对接</button>
+</div>
+
+<div class="page">
+  <!-- 员工 -->
+  <section id="sec-emp">
+    <div class="card">
+      <h3>新增员工</h3>
+      <div class="row">
+        <div style="flex:1"><label>姓名</label><input id="e_name" placeholder="如 张三"></div>
+        <div style="flex:1"><label>部门</label><input id="e_dept" placeholder="如 海外项目部"></div>
+        <div style="flex:1"><label>工号</label><input id="e_no" placeholder="EMP-001"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:1"><label>打卡密码 (PIN)</label><input id="e_pin" type="password" placeholder="员工登录用，至少 4 位"></div>
+        <div style="flex:1"><label>国家</label><select id="e_country"></select></div>
+        <div style="flex:1"><label>时区 (IANA)</label><input id="e_tz" placeholder="Asia/Shanghai"></div>
+        <div style="flex:1"><label>钉钉ID（选填）</label><input id="e_dd" placeholder="钉钉 unionId，免登绑定用"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:1"><label>打卡范围（针对该员工）</label><select id="e_gf"></select></div>
+        <div style="flex:1"><label>上班时间</label><input id="e_ws" type="time" value="09:00"></div>
+        <div style="flex:1"><label>下班时间</label><input id="e_we" type="time" value="18:00"></div>
+        <button class="btn" onclick="addEmp()">添加</button>
+      </div>
+      <div class="muted">提示：员工需用工号 + 打卡密码在移动端登录打卡；「打卡范围」留空表示跟随下方默认范围。</div>
+    </div>
+    <div class="card">
+      <h3>员工列表（点击「录入人脸」上传证件照建立底库）</h3>
+      <table><thead><tr><th>姓名</th><th>部门</th><th>工号</th><th>底库</th><th>操作</th></tr></thead>
+      <tbody id="empBody"></tbody></table>
+    </div>
+  </section>
+
+  <!-- 规则 -->
+  <section id="sec-rule" style="display:none">
+    <div class="card">
+      <h3>新增考勤规则（打卡范围 + 时间 + 时区/国家）</h3>
+      <div class="grid">
+        <div><label>规则名称</label><input id="r_name" value="海外办公点考勤"></div>
+        <div><label>国家</label><select id="r_country"></select></div>
+        <div><label>时区(IANA)</label><input id="r_tz" value="Asia/Shanghai"></div>
+        <div><label>中心纬度 lat</label><input id="r_lat" type="number" step="0.0001" value="31.2304"></div>
+        <div><label>中心经度 lng</label><input id="r_lng" type="number" step="0.0001" value="121.4737"></div>
+        <div><label>允许半径(米)</label><input id="r_radius" type="number" value="300"></div>
+        <div><label>工作日(0-6,逗号)</label><input id="r_wd" value="1,2,3,4,5"></div>
+        <div><label>上班时间</label><input id="r_ci" type="time" value="09:00"></div>
+        <div><label>下班时间</label><input id="r_co" type="time" value="18:00"></div>
+        <div><label>迟到宽限(分)</label><input id="r_grace" type="number" value="10"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn" onclick="addRule()">保存规则</button>
+        <span class="muted"> 提示：可在高德/Google 地图拾取中心经纬度；海外点请填当地时区</span></div>
+    </div>
+    <div class="card"><h3>规则列表</h3><table><thead><tr><th>名称</th><th>国家</th><th>时区</th><th>中心</th><th>半径</th><th>时间</th><th>操作</th></tr></thead>
+      <tbody id="ruleBody"></tbody></table></div>
+  </section>
+
+  <!-- 节假日 -->
+  <section id="sec-hol" style="display:none">
+    <div class="card">
+      <h3>新增节假日（按国家自动标记到打卡记录）</h3>
+      <div class="row">
+        <div style="flex:1"><label>国家</label><select id="h_country"></select></div>
+        <div style="flex:1"><label>日期</label><input id="h_date" type="date"></div>
+        <div style="flex:1"><label>名称</label><input id="h_name" placeholder="如 独立日"></div>
+        <div style="flex:1"><label>类型</label><select id="h_type"><option value="public">法定假日</option><option value="makeup">调休补班(周末上班)</option></select></div>
+        <button class="btn" onclick="addHol()">添加</button>
+      </div>
+      <div class="muted">已内置 2026 中国（含调休补班）、美国、日本主要节假日，可在此增删。</div>
+    </div>
+    <div class="card"><h3>节假日列表</h3>
+      <div class="row" style="margin-bottom:10px"><label style="margin:0">筛选国家</label><select id="h_filter" onchange="loadHol()"><option value="">全部</option></select></div>
+      <table><thead><tr><th>国家</th><th>日期</th><th>名称</th><th>类型</th><th>操作</th></tr></thead>
+      <tbody id="holBody"></tbody></table></div>
+  </section>
+
+  <!-- 记录 -->
+  <section id="sec-rec" style="display:none">
+    <div class="card">
+      <div class="row">
+        <div style="flex:1"><label>员工</label><select id="rec_emp"><option value="">全部</option></select></div>
+        <div><label>开始日期</label><input id="rec_from" type="date"></div>
+        <div><label>结束日期</label><input id="rec_to" type="date"></div>
+        <button class="btn" onclick="loadRec()">查询</button>
+        <button class="btn ghost" onclick="pushDingtalk()">推送今日到钉钉</button>
+        <button class="btn ghost" onclick="exportCsv()">导出 CSV</button>
+      </div>
+    </div>
+    <div class="card"><h3>打卡记录</h3>
+      <table><thead><tr><th>员工</th><th>类型</th><th>当地时间</th><th>距离</th><th>围栏</th><th>人脸</th><th>时间状态</th><th>节假日</th><th>位置</th></tr></thead>
+      <tbody id="recBody"></tbody></table></div>
+  </section>
+
+  <!-- 打卡范围（默认行政区 / 圆形 / 不限） -->
+  <section id="sec-gf" style="display:none">
+    <div class="card">
+      <h3>默认打卡范围</h3>
+      <div class="muted">员工未单独设置「打卡范围」时，沿用这里的默认配置。每位员工的打卡范围可在「员工 / 人脸底库」的添加表单里单独设置。</div>
+      <div style="margin:10px 0 4px"><b>当前范围：</b><span id="gfCurrent" class="pill">—</span></div>
+      <div class="seg" id="gfSeg">
+        <button data-m="off" class="on">不限（任意地点）</button>
+        <button data-m="region">行政区范围</button>
+        <button data-m="circle">自定义圆形</button>
+      </div>
+      <div class="gf-form show" id="gfPanel-off">
+        <div class="muted">不限制打卡地点，员工可在任意位置打卡（仅做人脸核验与节假日判定）。</div>
+      </div>
+      <div class="gf-form" id="gfPanel-region">
+        <div class="grid">
+          <div><label>国家 / 地区</label><select id="gf_country"></select></div>
+          <div><label>级别</label><select id="gf_level" onchange="gfLevelChange()">
+            <option value="country">整个国家</option>
+            <option value="province">省</option>
+            <option value="city">市</option>
+            <option value="district">区/县</option>
+          </select></div>
+          <div id="gfRegionWrap" style="display:none"><label>地区</label><select id="gf_region"></select></div>
+        </div>
+        <div class="muted">行政区边界数据：中国来自阿里 DataV，其他国家来自 Natural Earth / Highcharts。</div>
+      </div>
+      <div class="gf-form" id="gfPanel-circle">
+        <div class="grid">
+          <div><label>圆心纬度 lat</label><input id="gf_lat" type="number" step="0.0001"></div>
+          <div><label>圆心经度 lng</label><input id="gf_lng" type="number" step="0.0001"></div>
+          <div><label>允许半径(米)</label><input id="gf_radius" type="number" value="300"></div>
+        </div>
+      </div>
+      <div style="margin-top:12px"><button class="btn" onclick="applyGeofence()">应用打卡范围</button><span class="muted" id="gfMsg" style="margin-left:10px"></span></div>
+    </div>
+  </section>
+
+  <!-- 钉钉 -->
+  <section id="sec-dt" style="display:none">
+    <div class="card">
+      <h3>钉钉考勤对接（自定义群机器人）</h3>
+      <div class="row">
+        <div style="flex:1"><label>机器人 Webhook 地址</label><input id="dt_wh" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
+        <div style="flex:1"><label>加签 Secret</label><input id="dt_sec" placeholder="SECxxxx（留空则不验签）"></div>
+        <button class="btn" onclick="saveDingtalk()">保存</button>
+      </div>
+      <div class="muted">在钉钉群「智能群助手 → 自定义机器人」创建，开启「加签」后复制 Webhook 与 Secret。保存后，在「打卡记录」页点击「推送今日到钉钉」即可把人脸考勤日报发到群内。</div>
+      <div id="dt_status" class="muted" style="margin-top:8px"></div>
+    </div>
+  </section>
+</div>
+
+<div class="modal" id="enrollModal">
+  <div class="box">
+    <h3 style="margin-top:0">录入人脸底库</h3>
+    <p class="muted" id="enrollName"></p>
+    <input type="file" id="enrollFile" accept="image/*" onchange="previewEnroll()">
+    <img id="enrollImg" alt="证件照预览">
+    <div id="enrollStatus" class="muted">请上传员工证件照（正面清晰人脸）</div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button class="btn" id="enrollBtn" onclick="doEnroll()" disabled>提取人脸并保存</button>
+      <button class="btn ghost" onclick="closeModal()">取消</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="assets/i18n.js"></script>
+<script src="assets/att-config.js"></script>
+<script src="assets/attendance.js"></script>
+</body>
+</html>
