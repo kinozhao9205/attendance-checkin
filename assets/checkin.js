@@ -221,14 +221,14 @@ function onRegCountryChange() {
 }
 async function register() {
   const name = $('regName').value.trim();
-  const no = $('regNo').value.trim();
   const phone = $('regPhone').value.trim();
   const p1 = $('regPin').value.trim(), p2 = $('regPin2').value.trim();
   if (!name || !p1) { setStatus(tr('fields_required'), 'warn'); return; }
   if (p1 !== p2) { setStatus(tr('reg_pin_mismatch'), 'bad'); return; }
   const btn = $('btn-register'); if (btn) btn.disabled = true;
   try {
-    const r = await attFetch('/api/att/emp/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withTg({ name, employee_no: no, pin: p1, phone, country: $('regCountry').value, timezone: $('regTz').value })) });
+    // 工号由服务端按所选国家自动生成（如 UZ0001），员工无需填写
+    const r = await attFetch('/api/att/emp/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withTg({ name, pin: p1, phone, country: $('regCountry').value, timezone: $('regTz').value })) });
     const d = await r.json();
     if (!r.ok || !d.ok) { setStatus(tr((d && d.code) || 'save_fail', d && d.error), 'bad'); return; }
     currentEmp = d;

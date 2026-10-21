@@ -58,13 +58,19 @@ async function addEmp() {
   const gfVal = $('e_gf').value || '';
   const geofence = gfVal ? { mode: 'region', region: { country: gfVal, level: 'country' } } : null;
   const r = await api('/api/att/employees', { method: 'POST', body: JSON.stringify({
-    name: $('e_name').value, dept: $('e_dept').value, emp_no: $('e_no').value,
+    name: $('e_name').value, dept: $('e_dept').value,
     pin: $('e_pin').value, country: $('e_country').value || 'CN', timezone: $('e_tz').value || 'Asia/Shanghai',
     work_start: $('e_ws').value || '09:00', work_end: $('e_we').value || '18:00',
     dingtalk_id: $('e_dd') ? $('e_dd').value : '',
     geofence,
   }) });
-  if (r.ok) { $('e_name').value = $('e_dept').value = $('e_no').value = $('e_pin').value = ''; if ($('e_dd')) $('e_dd').value = ''; loadEmployees(); toast('已添加'); }
+  if (r.ok) {
+    const no = r.body.employee && r.body.employee.emp_no;
+    $('e_name').value = $('e_dept').value = $('e_pin').value = '';
+    if ($('e_dd')) $('e_dd').value = '';
+    loadEmployees();
+    toast(no ? '已添加，工号 ' + no : '已添加');
+  }
   else toast('添加失败：' + (r.body.error || ''));
 }
 async function delEmp(id) { await api('/api/att/employees/' + id, { method: 'DELETE' }); loadEmployees(); }
@@ -161,6 +167,15 @@ async function fillCountries() {
     const items = (g.ok ? g.body.countries : []).filter((c) => c.iso !== 'CN');
     const list = '<option value="CN">中国 CN</option>' + items.map((c) => `<option value="${c.iso}">${c.zh} ${c.name} (${c.iso})</option>`).join('');
     if ($('e_country')) $('e_country').innerHTML = list;
+    // 工号只读：提示当前国家会自动分配的编号规则
+    if ($('e_country') && $('e_no')) {
+      const sync = () => {
+        const iso = $('e_country').value || 'CN';
+        $('e_no').placeholder = '自动生成：' + iso + '0001 起';
+      };
+      $('e_country').addEventListener('change', sync);
+      sync();
+    }
     if ($('e_gf')) $('e_gf').innerHTML = '<option value="">跟随默认</option>' + list;
   } catch (_) {}
 }
