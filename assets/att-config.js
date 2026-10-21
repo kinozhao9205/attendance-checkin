@@ -10,4 +10,4 @@
  *
  * 应急通道：不改文件也可在打卡页 URL 后带 ?api=https://att.bydtyr.com
  * （会被记住到手机本地，PWA 离线打开也生效；文件里的正式配置优先级更高）。 */
-window.ATT_API_BASE = '';
+window.ATT_API_BASE = 'https://www.bydtyr.com/att-api';
