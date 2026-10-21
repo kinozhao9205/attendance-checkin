@@ -260,7 +260,8 @@ async function onEnrollPhoto(ev) {
 // 读文件为可绘制的图片（优先 createImageBitmap，自动按 EXIF 摆正）
 function loadPhoto(file) {
   if (window.createImageBitmap) {
-    return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => loadPhotoByImg(file));
+    try { return createImageBitmap(file, { imageOrientation: 'from-image' }).catch(() => loadPhotoByImg(file)); }
+    catch (e) { /* 老浏览器不支持该参数，走 Image 兜底 */ }
   }
   return loadPhotoByImg(file);
 }
