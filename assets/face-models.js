@@ -45,7 +45,11 @@
   async function loadNet(api, name, bases) {
     var last;
     for (var i = 0; i < bases.length; i++) {
-      try { await api.nets[name].loadFromUri(bases[i]); return bases[i]; } catch (e) { last = e; }
+      try {
+        // 单模型 90 秒没下完就换下一个源（弱网下 fetch 可能既不报错也不结束）
+        await timeout(api.nets[name].loadFromUri(bases[i]), 90000);
+        return bases[i];
+      } catch (e) { last = e; }
     }
     throw last || new Error('model load failed');
   }

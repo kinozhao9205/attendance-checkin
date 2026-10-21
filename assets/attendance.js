@@ -90,7 +90,11 @@ async function ensureModels() {
   try {
     await window.FaceModels.load({
       tinyLandmark: false,           // 后台录入用标准关键点，精度更高
-      onProgress: (i, n, label) => { $('enrollStatus').textContent = '加载人脸模型 ' + i + '/' + n + '（' + label + '）…'; },
+      onProgress: (i, n, label) => {
+        $('enrollStatus').textContent = i === n
+          ? '加载人脸模型 ' + i + '/' + n + '（' + label + '，约 6MB，首次稍慢）…'
+          : '加载人脸模型 ' + i + '/' + n + '（' + label + '）…';
+      },
     });
     MODELS_OK = true;
     $('enrollStatus').textContent = '模型已就绪，正在提取人脸特征…';
