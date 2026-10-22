@@ -273,7 +273,11 @@ async function onEnrollPhoto(ev) {
     setStatus(tr('enroll_saving'), 'warn');
     const r = await attFetch('/api/att/emp/enroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(withTg({ descriptor })) });
     const d = await r.json();
-    if (!r.ok || !d.ok) throw new Error(tr('enroll_fail', d && d.error));
+    if (!r.ok || !d.ok) {
+      // 已知错误码走三语文案（already_enrolled / face_taken），其余回落后端中文说明
+      const code = d && d.code;
+      throw new Error(code && tr(code) !== code ? tr(code) : tr('enroll_fail', d && d.error));
+    }
     currentEmp.has_face = true;
     renderEnrollUI();
     clearShot();

@@ -59,9 +59,19 @@ async function loadEmployees() {
     <td>${e.name}</td><td>${e.dept || '-'}</td><td>${e.emp_no || '-'}</td>
     <td>${faceReady(e) ? '<span class="pill g">已建底库</span>' : '<span class="pill r">未录入</span>'}</td>
     <td>
-      ${faceReady(e) ? '' : `<button class="btn s" onclick="openEnroll('${e.id}','${e.name}')">录入人脸</button>`}
+      ${faceReady(e)
+        ? `<button class="btn s" onclick="resetFace('${e.id}','${e.name}')">重置人脸</button>`
+        : `<button class="btn s" onclick="openEnroll('${e.id}','${e.name}')">录入人脸</button>`}
       <button class="btn s danger" onclick="delEmp('${e.id}')">删</button>
     </td></tr>`).join('');
+}
+// 重置人脸底库：底库被错误/冒名录入时的清理入口，重置后员工需自行重新录入
+async function resetFace(id, name) {
+  if (!confirm(`确定重置「${name}」的人脸底库？\n重置后该员工需重新录入，期间无法刷脸打卡（打卡记录保留）。`)) return;
+  const r = await api('/api/att/employees/' + id + '/face', { method: 'DELETE' });
+  if (!r.ok) return toast((r.body && r.body.error) || '重置失败');
+  toast('已重置，请通知该员工重新录入');
+  loadEmployees();
 }
 let EMP_CIRCLE = null;   // 员工自定义圆形范围（地图选点结果）
 function defaultPickCenter() {
@@ -224,7 +234,14 @@ async function doEnroll() {
   $('enrollStatus').textContent = '正在保存人脸底库…';
   try {
     const photo = await shrinkPhoto($('enrollImg').src);
-    const r = await api('/api/att/employees/' + enrollId + '/enroll', { method: 'POST', body: JSON.stringify({ photo, descriptor: enrollDescriptor }) });
+    let r = await api('/api/att/employees/' + enrollId + '/enroll', { method: 'POST', body: JSON.stringify({ photo, descriptor: enrollDescriptor }) });
+    // 撞脸拦截（可能录错人）：管理员二次确认后可强制覆盖
+    if (!r.ok && r.status === 409 && r.body.code === 'face_taken') {
+      const n = r.body.nearest || {};
+      if (confirm(`这张脸与「${n.name || '其他员工'}（${n.emp_no || ''}）」高度相似（距离 ${n.dist}）。\n\n确认是同一人的重复档案 / 双胞胎等特殊情况，强制覆盖吗？`)) {
+        r = await api('/api/att/employees/' + enrollId + '/enroll', { method: 'POST', body: JSON.stringify({ photo, descriptor: enrollDescriptor, force: true }) });
+      } else { toast('已取消录入'); $('enrollStatus').textContent = '已取消：疑似与其他员工重复'; btn.disabled = false; return; }
+    }
     if (r.ok) { toast('人脸底库已建立'); closeModal(); loadEmployees(); }
     else { toast('录入失败：' + (r.body.error || '')); $('enrollStatus').textContent = '保存失败：' + (r.body.error || '') + '，可重试'; btn.disabled = false; }
   } catch (e) {
