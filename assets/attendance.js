@@ -50,14 +50,16 @@ $('tabs').addEventListener('click', (e) => {
 });
 
 /* ---------- 员工 ---------- */
+// 列表接口只回 has_face（不传 128 维特征，省流量）；兼容旧字段 face_descriptor
+const faceReady = (e) => !!(e && (e.has_face || e.face_descriptor));
 async function loadEmployees() {
   const r = await api('/api/att/employees');
   if (!r.ok) return;
   $('empBody').innerHTML = r.body.employees.map((e) => `<tr>
     <td>${e.name}</td><td>${e.dept || '-'}</td><td>${e.emp_no || '-'}</td>
-    <td>${e.face_descriptor ? '<span class="pill g">已建底库</span>' : '<span class="pill r">未录入</span>'}</td>
+    <td>${faceReady(e) ? '<span class="pill g">已建底库</span>' : '<span class="pill r">未录入</span>'}</td>
     <td>
-      ${e.face_descriptor ? '' : `<button class="btn s" onclick="openEnroll('${e.id}','${e.name}')">录入人脸</button>`}
+      ${faceReady(e) ? '' : `<button class="btn s" onclick="openEnroll('${e.id}','${e.name}')">录入人脸</button>`}
       <button class="btn s danger" onclick="delEmp('${e.id}')">删</button>
     </td></tr>`).join('');
 }
