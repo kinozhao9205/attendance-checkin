@@ -63,9 +63,41 @@ async function loadEmployees() {
       <button class="btn s danger" onclick="delEmp('${e.id}')">删</button>
     </td></tr>`).join('');
 }
+let EMP_CIRCLE = null;   // 员工自定义圆形范围（地图选点结果）
+function defaultPickCenter() {
+  const k = ($('r_country') && $('r_country').value) || 'CN';
+  const c = COUNTRIES[k] || { lat: 31.2304, lng: 121.4737 };
+  return { lat: +c.lat || 31.2304, lng: +c.lng || 121.4737, radius: 300 };
+}
+function rangeText(v) {
+  return '圆心 ' + (+v.lat).toFixed(5) + ', ' + (+v.lng).toFixed(5) + ' · 半径 ' + (window.MapPick ? MapPick.fmtMeters(v.radius) : v.radius + ' 米');
+}
+function empGfModeChange() {
+  const m = $('e_gf_mode').value;
+  $('e_gf_pickWrap').style.display = m === 'circle' ? 'block' : 'none';
+  if (m === 'circle' && EMP_CIRCLE) $('e_gf_text').textContent = rangeText(EMP_CIRCLE);
+  if (m !== 'circle') $('e_gf_text').textContent = '';
+}
+function pickEmpRange() {
+  const d = EMP_CIRCLE || defaultPickCenter();
+  MapPick.openModal({
+    lat: d.lat, lng: d.lng, radius: d.radius || 300,
+    title: '选择该员工的打卡范围',
+    onOk: (v) => {
+      EMP_CIRCLE = { lat: v.lat, lng: v.lng, radius: v.radius };
+      $('e_gf_text').textContent = rangeText(v);
+      toast('已选取：' + MapPick.fmtMeters(v.radius));
+    },
+  });
+}
 async function addEmp() {
-  const gfVal = $('e_gf').value || '';
-  const geofence = gfVal ? { mode: 'region', region: { country: gfVal, level: 'country' } } : null;
+  const mode = $('e_gf_mode').value;
+  let geofence = null;
+  if (mode === 'off') geofence = { mode: 'off' };
+  else if (mode === 'circle') {
+    if (!EMP_CIRCLE) { toast('请先点「📍 地图选范围」确定打卡距离圈'); return; }
+    geofence = { mode: 'circle', circle: EMP_CIRCLE };
+  }
   const r = await api('/api/att/employees', { method: 'POST', body: JSON.stringify({
     name: $('e_name').value, dept: $('e_dept').value,
     pin: $('e_pin').value, country: $('e_country').value || 'CN', timezone: $('e_tz').value || 'Asia/Shanghai',
@@ -210,24 +242,37 @@ async function fillCountries() {
   $('r_country').innerHTML = opts;
   $('h_country').innerHTML = opts;
   $('h_filter').innerHTML = '<option value="">全部</option>' + opts;
-  $('r_country').onchange = () => { const c = COUNTRIES[$('r_country').value]; if (c) { $('r_tz').value = c.tz; $('r_lat').value = c.lat; $('r_lng').value = c.lng; } };
+  // 时区一律用下拉选择（按大洲分组，带实时 UTC 偏移），不再手填 IANA 字符串
+  $('r_tz').innerHTML = window.tzOptionsHTML('Asia/Shanghai');
+  $('e_tz').innerHTML = window.tzOptionsHTML('Asia/Shanghai');
+  $('r_country').onchange = () => {
+    const k = $('r_country').value, c = COUNTRIES[k];
+    if (!c) return;
+    const tz = (window.TZ_BY_COUNTRY || {})[k] || c.tz;
+    if (tz) $('r_tz').value = tz;
+    if (c.lat != null) { $('r_lat').value = c.lat; $('r_lng').value = c.lng; }
+    rGeoText();
+  };
   // 员工表单：国家 + 打卡范围（用更全的 geo/countries，含中文名）
   try {
     const g = await api('/api/att/geo/countries');
     const items = (g.ok ? g.body.countries : []).filter((c) => c.iso !== 'CN');
     const list = '<option value="CN">中国 CN</option>' + items.map((c) => `<option value="${c.iso}">${c.zh} ${c.name} (${c.iso})</option>`).join('');
     if ($('e_country')) $('e_country').innerHTML = list;
-    // 工号只读：提示当前国家会自动分配的编号规则
-    if ($('e_country') && $('e_no')) {
+    if ($('e_country')) {
       const sync = () => {
         const iso = $('e_country').value || 'CN';
-        $('e_no').placeholder = '自动生成：' + iso + '0001 起';
+        // 工号只读：提示当前国家会自动分配的编号规则
+        if ($('e_no')) $('e_no').placeholder = '自动生成：' + iso + '0001 起';
+        // 国家决定默认时区（仍可手动改成同一国家的其它时区）
+        const tz = (window.TZ_BY_COUNTRY || {})[iso];
+        if (tz && $('e_tz')) $('e_tz').value = tz;
       };
       $('e_country').addEventListener('change', sync);
       sync();
     }
-    if ($('e_gf')) $('e_gf').innerHTML = '<option value="">跟随默认</option>' + list;
   } catch (_) {}
+  rGeoText();
 }
 async function loadRules() {
   const r = await api('/api/att/rules'); if (!r.ok) return;
@@ -246,6 +291,27 @@ async function addRule() {
   if (r.ok) { toast('规则已保存'); loadRules(); } else toast('保存失败：' + (r.body.error || ''));
 }
 async function delRule(id) { await api('/api/att/rules/' + id, { method: 'DELETE' }); loadRules(); }
+function rGeoText() {
+  if (!$('r_geoText')) return;
+  const lat = +$('r_lat').value, lng = +$('r_lng').value;
+  const rad = +$('r_radius').value || 300;
+  $('r_geoText').textContent = (isFinite(lat) && isFinite(lng))
+    ? rangeText({ lat, lng, radius: rad })
+    : '未选择（点左侧按钮在地图上点选）';
+}
+function pickRuleRange() {
+  MapPick.openModal({
+    lat: +$('r_lat').value || 31.2304,
+    lng: +$('r_lng').value || 121.4737,
+    radius: +$('r_radius').value || 300,
+    title: '选择该规则的打卡范围',
+    onOk: (v) => {
+      $('r_lat').value = v.lat; $('r_lng').value = v.lng; $('r_radius').value = v.radius;
+      rGeoText(); toast('已选取：' + MapPick.fmtMeters(v.radius));
+    },
+  });
+}
+$('r_radius') && $('r_radius').addEventListener('input', rGeoText);
 
 /* ---------- 冬令时 / 夏令时 ---------- */
 async function loadSeason() {
@@ -331,8 +397,47 @@ async function pushDingtalk() {
   toast(r.body.push && r.body.push.ok ? '已推送到钉钉群' : '推送：' + ((r.body.push && r.body.push.error) || '失败'));
 }
 
-/* ---------- 打卡范围（默认行政区 / 圆形 / 不限） ---------- */
+/* ---------- 打卡范围（不限 / 地图圆形 / 行政区） ---------- */
 let GF_COUNTRIES = [];
+let GF_MAP = null;        // Leaflet 实例
+let gfBusy = false;       // 防止「地图 → 输入框 → 地图」互相触发的死循环
+
+function gfPaint(v) {
+  if (!v) return;
+  $('gf_lat').value = v.lat; $('gf_lng').value = v.lng;
+  if (!gfBusy) {
+    gfBusy = true;
+    $('gf_radius').value = v.radius;
+    $('gf_radius_range').value = Math.min(3000, v.radius);
+    gfBusy = false;
+  }
+  $('gfCoord').innerHTML = '圆心 <b>' + (+v.lat).toFixed(6) + ', ' + (+v.lng).toFixed(6) +
+    '</b>　半径 <b>' + (window.MapPick ? MapPick.fmtMeters(v.radius) : v.radius + ' 米') + '</b>';
+}
+
+function ensureGfMap(initial) {
+  if (typeof L === 'undefined') return null;
+  if (GF_MAP) return GF_MAP;
+  const d = initial || defaultPickCenter();
+  GF_MAP = MapPick.create($('gfMap'), {
+    lat: d.lat, lng: d.lng, radius: d.radius || 300,
+    onChange: gfPaint,
+  });
+  if (GF_MAP) gfPaint(GF_MAP.getValue());
+  return GF_MAP;
+}
+
+function gfLocate() {
+  if (!GF_MAP) return;
+  if (!navigator.geolocation) { toast('当前浏览器不支持定位'); return; }
+  toast('正在定位…');
+  navigator.geolocation.getCurrentPosition(
+    (p) => { GF_MAP.setPoint(p.coords.latitude, p.coords.longitude, true); toast('已定位到当前位置，可拖动微调'); },
+    (e) => toast('定位失败：' + (e && e.code === 1 ? '未授权位置权限' : '无法获取位置') + '，可手动点选'),
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
+  );
+}
+
 async function loadGeofence() {
   const r = await api('/api/att/geofence');
   const gf = (r.ok && r.body.geofence) || { mode: 'off' };
@@ -340,6 +445,7 @@ async function loadGeofence() {
   [...$('gfSeg').children].forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
   ['off', 'region', 'circle'].forEach((m) => $('gfPanel-' + m).classList.toggle('show', m === mode));
   $('gfCurrent').textContent = geofenceText(gf);
+
   const c = await api('/api/att/geo/countries');
   GF_COUNTRIES = c.ok ? c.body.countries : [];
   const list = GF_COUNTRIES.map((x) => `<option value="${x.iso}">${x.zh} ${x.name} (${x.iso})</option>`).join('');
@@ -352,14 +458,27 @@ async function loadGeofence() {
       if (gf.sel.adcode) $('gf_region').value = String(gf.sel.adcode);
     }
   }
+
+  // 圆形模式：地图呈现，圆心/半径直接落在图上
+  const start = (gf.mode === 'circle' && gf.circle)
+    ? { lat: +gf.circle.lat, lng: +gf.circle.lng, radius: +gf.circle.radius }
+    : defaultPickCenter();
+  ensureGfMap(start);
+  if (GF_MAP) {
+    GF_MAP.setPoint(start.lat, start.lng, false);
+    GF_MAP.setRadius(start.radius || 300);
+    gfPaint(GF_MAP.getValue());
+    setTimeout(() => { GF_MAP.invalidate(); if (mode === 'circle') GF_MAP.fit(); }, 60);
+  }
   if (gf.mode === 'circle' && gf.circle) {
-    $('gf_lat').value = gf.circle.lat; $('gf_lng').value = gf.circle.lng; $('gf_radius').value = gf.circle.radius;
+    $('gf_radius').value = gf.circle.radius;
+    $('gf_radius_range').value = Math.min(3000, gf.circle.radius);
   }
   $('gfMsg').textContent = '';
 }
 function geofenceText(gf) {
   if (!gf || gf.mode === 'off') return '不限（任意地点）';
-  if (gf.mode === 'circle' && gf.circle) return `自定义圆形：${gf.circle.lat},${gf.circle.lng} 半径${gf.circle.radius}m`;
+  if (gf.mode === 'circle' && gf.circle) return `地图圆形：${gf.circle.lat},${gf.circle.lng} 半径${gf.circle.radius}m`;
   if (gf.mode === 'region' && gf.region) { const n = gf.region.name || (gf.sel && (gf.sel.name || gf.sel.country)) || '已设行政区'; return `行政区范围：${n}（来源 ${gf.region.source || '?'}）`; }
   return '已设置';
 }
@@ -368,6 +487,24 @@ $('gfSeg') && $('gfSeg').addEventListener('click', (e) => {
   const m = b.dataset.m;
   [...$('gfSeg').children].forEach((x) => x.classList.toggle('on', x === b));
   ['off', 'region', 'circle'].forEach((mm) => $('gfPanel-' + mm).classList.toggle('show', mm === m));
+  if (m === 'circle') {
+    ensureGfMap();
+    setTimeout(() => { if (GF_MAP) { GF_MAP.invalidate(); GF_MAP.fit(); } }, 80);
+  }
+});
+// 底图切换 + 半径滑杆/数字框同步
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.mp-chip[data-gfbm]'); if (!b || !GF_MAP) return;
+  document.querySelectorAll('.mp-chip[data-gfbm]').forEach((x) => x.classList.toggle('on', x === b));
+  GF_MAP.setBasemap(b.dataset.gfbm);
+});
+['gf_radius', 'gf_radius_range'].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    if (gfBusy || !GF_MAP) return;
+    GF_MAP.setRadius(+el.value);
+  });
 });
 async function gfLevelChange() {
   const country = $('gf_country').value;
@@ -395,7 +532,10 @@ async function applyGeofence() {
     }
     body.region = region;
   } else if (mode === 'circle') {
-    body.lat = +$('gf_lat').value; body.lng = +$('gf_lng').value; body.radius = +$('gf_radius').value;
+    if (!GF_MAP) { $('gfMsg').textContent = '地图未加载，请刷新后重试'; return; }
+    const v = GF_MAP.getValue();
+    if (!isFinite(v.lat) || !isFinite(v.lng)) { $('gfMsg').textContent = '请在地图上点选圆心'; return; }
+    body.lat = v.lat; body.lng = v.lng; body.radius = v.radius;
   }
   const r = await api('/api/att/geofence', { method: 'POST', body: JSON.stringify(body) });
   if (r.ok) { $('gfMsg').textContent = '✅ 已更新'; $('gfCurrent').textContent = geofenceText(r.body.geofence); toast('打卡范围已更新'); }

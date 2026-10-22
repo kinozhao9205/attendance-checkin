@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>人脸考勤管理后台</title>
 <script defer src="assets/vendor/face-api.min.js"></script>
+<link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
+<script src="assets/vendor/leaflet/leaflet.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f4f6fb; color: #1c2433; }
@@ -50,6 +52,35 @@
   .seg button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #d4dbe8; background: #fff; color: #1c2433; font-size: 14px; }
   .seg button.on { background: #2f6fed; border-color: #2f6fed; color: #fff; font-weight: 600; }
   .geo-btn { cursor: pointer; color: #2f6fed; text-decoration: underline; }
+  /* 地图选点 */
+  .mp-map { height: 300px; border-radius: 12px; overflow: hidden; border: 1px solid #e3e8f2; background: #eef2fb; }
+  .mp-map.lg { height: 400px; }
+  .mp-fallback { padding: 28px; text-align: center; color: #d23b3b; font-size: 13px; }
+  .mp-pin-wrap { background: transparent; border: none; }
+  .mp-pin { width: 26px; height: 26px; border-radius: 50%; background: #2f6fed; border: 3px solid #fff;
+    box-shadow: 0 2px 8px rgba(20,40,90,.45); display: flex; align-items: center; justify-content: center; }
+  .mp-pin i { width: 6px; height: 6px; border-radius: 50%; background: #fff; display: block; }
+  .mp-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .mp-chip { border: 1px solid #d4dbe8; background: #fff; color: #1c2433; border-radius: 999px;
+    padding: 6px 13px; font-size: 13px; cursor: pointer; }
+  .mp-chip.on { background: #2f6fed; border-color: #2f6fed; color: #fff; font-weight: 600; }
+  .mp-tip { color: #8a93a8; font-size: 12px; }
+  .mp-foot { margin-top: 10px; }
+  .mp-row { display: flex; align-items: center; gap: 10px; }
+  .mp-row input[type=range] { flex: 1; padding: 0; }
+  .mp-row input[type=number] { width: 100px; }
+  .mp-label, .mp-unit { font-size: 12px; color: #6b779c; white-space: nowrap; }
+  .mp-coord { font-size: 12px; color: #6b779c; margin-top: 8px; }
+  .mp-modal { position: fixed; inset: 0; background: rgba(8,12,28,.55); display: none;
+    align-items: center; justify-content: center; padding: 14px; z-index: 80; }
+  .mp-box { background: #fff; border-radius: 14px; width: 100%; max-width: 760px; padding: 16px;
+    max-height: 94vh; overflow: auto; }
+  .mp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .mp-head strong { font-size: 15px; }
+  .mp-x { font-size: 24px; line-height: 1; color: #8a93a8; cursor: pointer; padding: 0 4px; }
+  .mp-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+  .geo-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .leaflet-container { font: inherit; border-radius: 12px; }
 </style>
 </head>
 <body>
@@ -82,16 +113,26 @@
       <div class="row" style="margin-top:10px">
         <div style="flex:1"><label>打卡密码 (PIN)</label><input id="e_pin" type="password" placeholder="员工登录用，至少 4 位"></div>
         <div style="flex:1"><label>国家</label><select id="e_country"></select></div>
-        <div style="flex:1"><label>时区 (IANA)</label><input id="e_tz" placeholder="Asia/Shanghai"></div>
+        <div style="flex:1"><label>时区</label><select id="e_tz"></select></div>
         <div style="flex:1"><label>钉钉ID（选填）</label><input id="e_dd" placeholder="钉钉 unionId，免登绑定用"></div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div style="flex:1"><label>打卡范围（针对该员工）</label><select id="e_gf"></select></div>
         <div style="flex:1"><label>上班时间</label><input id="e_ws" type="time" value="09:00"></div>
         <div style="flex:1"><label>下班时间</label><input id="e_we" type="time" value="18:00"></div>
+        <div style="flex:1.3"><label>打卡范围</label>
+          <select id="e_gf_mode" onchange="empGfModeChange()">
+            <option value="inherit">跟随默认范围</option>
+            <option value="off">不限（任意地点）</option>
+            <option value="circle">自定义圆形（地图选点）</option>
+          </select>
+          <div id="e_gf_pickWrap" style="display:none;margin-top:6px">
+            <button class="btn ghost s" onclick="pickEmpRange()">📍 地图选范围</button>
+            <span class="muted" id="e_gf_text"></span>
+          </div>
+        </div>
         <button class="btn" onclick="addEmp()">添加</button>
       </div>
-      <div class="muted">提示：员工需用工号 + 打卡密码在移动端登录打卡；「打卡范围」留空表示跟随下方默认范围。</div>
+      <div class="muted">提示：员工需用工号 + 打卡密码在移动端登录打卡；「打卡范围」选「跟随默认范围」时沿用下方「打卡范围」页的配置。</div>
     </div>
     <div class="card">
       <h3>员工列表（点击「录入人脸」上传证件照建立底库）</h3>
@@ -107,17 +148,24 @@
       <div class="grid">
         <div><label>规则名称</label><input id="r_name" value="海外办公点考勤"></div>
         <div><label>国家</label><select id="r_country"></select></div>
-        <div><label>时区(IANA)</label><input id="r_tz" value="Asia/Shanghai"></div>
-        <div><label>中心纬度 lat</label><input id="r_lat" type="number" step="0.0001" value="31.2304"></div>
-        <div><label>中心经度 lng</label><input id="r_lng" type="number" step="0.0001" value="121.4737"></div>
-        <div><label>允许半径(米)</label><input id="r_radius" type="number" value="300"></div>
+        <div><label>时区</label><select id="r_tz"></select></div>
         <div><label>工作日(0-6,逗号)</label><input id="r_wd" value="1,2,3,4,5"></div>
         <div><label>上班时间</label><input id="r_ci" type="time" value="09:00"></div>
         <div><label>下班时间</label><input id="r_co" type="time" value="18:00"></div>
         <div><label>迟到宽限(分)</label><input id="r_grace" type="number" value="10"></div>
+        <div><label>允许半径(米)</label><input id="r_radius" type="number" value="300" min="30" step="10"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label>打卡范围（在地图上点选圆心，圆即允许打卡的距离范围）</label>
+        <div class="geo-pick">
+          <button class="btn ghost" onclick="pickRuleRange()">📍 在地图上选择打卡范围</button>
+          <span class="muted" id="r_geoText">默认：上海 300 米</span>
+        </div>
+        <input type="hidden" id="r_lat" value="31.2304">
+        <input type="hidden" id="r_lng" value="121.4737">
       </div>
       <div style="margin-top:12px"><button class="btn" onclick="addRule()">保存规则</button>
-        <span class="muted"> 提示：可在高德/Google 地图拾取中心经纬度；海外点请填当地时区</span></div>
+        <span class="muted"> 提示：切国家会自动带出该国默认时区与城市中心，地图上再微调到实际办公点即可</span></div>
     </div>
     <div class="card"><h3>规则列表</h3><table><thead><tr><th>名称</th><th>国家</th><th>时区</th><th>中心</th><th>半径</th><th>时间</th><th>操作</th></tr></thead>
       <tbody id="ruleBody"></tbody></table></div>
@@ -183,7 +231,7 @@
       <div class="seg" id="gfSeg">
         <button data-m="off" class="on">不限（任意地点）</button>
         <button data-m="region">行政区范围</button>
-        <button data-m="circle">自定义圆形</button>
+        <button data-m="circle">地图选点（圆形）</button>
       </div>
       <div class="gf-form show" id="gfPanel-off">
         <div class="muted">不限制打卡地点，员工可在任意位置打卡（仅做人脸核验与节假日判定）。</div>
@@ -202,11 +250,24 @@
         <div class="muted">行政区边界数据：中国来自阿里 DataV，其他国家来自 Natural Earth / Highcharts。</div>
       </div>
       <div class="gf-form" id="gfPanel-circle">
-        <div class="grid">
-          <div><label>圆心纬度 lat</label><input id="gf_lat" type="number" step="0.0001"></div>
-          <div><label>圆心经度 lng</label><input id="gf_lng" type="number" step="0.0001"></div>
-          <div><label>允许半径(米)</label><input id="gf_radius" type="number" value="300"></div>
+        <div class="mp-bar">
+          <button type="button" class="mp-chip on" data-gfbm="street">街道图</button>
+          <button type="button" class="mp-chip" data-gfbm="sat">卫星图</button>
+          <button type="button" class="mp-chip" onclick="gfLocate()">📍 定位到我当前位置</button>
+          <span class="mp-tip">在地图上点一下设置圆心，拖动图钉可微调；圆圈范围即以该点为中心、下方半径的距离圈</span>
         </div>
+        <div id="gfMap" class="mp-map lg"></div>
+        <div class="mp-foot">
+          <div class="mp-row">
+            <span class="mp-label">允许半径</span>
+            <input type="range" id="gf_radius_range" min="30" max="3000" step="10" value="300">
+            <input type="number" id="gf_radius" min="30" max="20000" step="10" value="300">
+            <span class="mp-unit">米</span>
+          </div>
+          <div class="mp-coord" id="gfCoord">—</div>
+        </div>
+        <input type="hidden" id="gf_lat"><input type="hidden" id="gf_lng">
+        <div class="muted" style="margin-top:8px">底图为 Esri 全球街道/卫星图（WGS84，与打卡坐标一致，无偏移），国内外均可用。</div>
       </div>
       <div style="margin-top:12px"><button class="btn" onclick="applyGeofence()">应用打卡范围</button><span class="muted" id="gfMsg" style="margin-left:10px"></span></div>
     </div>
@@ -242,10 +303,12 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="assets/i18n.js?v=14"></script>
-<script src="assets/face-models.js?v=14"></script>
-<script src="assets/att-config.js?v=14"></script>
-<script src="assets/attendance.js?v=14"></script>
+<script src="assets/i18n.js?v=15"></script>
+<script src="assets/face-models.js?v=15"></script>
+<script src="assets/tz-list.js?v=15"></script>
+<script src="assets/map-picker.js?v=15"></script>
+<script src="assets/att-config.js?v=15"></script>
+<script src="assets/attendance.js?v=15"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});</script>
 </body>
 </html>

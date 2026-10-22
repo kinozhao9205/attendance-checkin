@@ -1,12 +1,16 @@
 /* Service Worker —— 海外员工打卡 PWA
  * 写操作（登录/打卡）一律走网络；静态资源缓存优先，页面导航网络优先、离线回退到已缓存的打卡页。 */
-const CACHE = 'attendance-v14';
+const CACHE = 'attendance-v15';
 // 相对路径写法，兼容任意子路径部署（如 GitHub Pages 的 /仓库名/ 前缀）
 const PRECACHE = [
   'checkin.html',
   'assets/i18n.js',
   'assets/face-models.js',
   'assets/att-config.js',
+  'assets/tz-list.js',
+  'assets/map-picker.js',
+  'assets/vendor/leaflet/leaflet.js',
+  'assets/vendor/leaflet/leaflet.css',
   'assets/checkin.js',
   'assets/vendor/face-api.min.js'
 ];
