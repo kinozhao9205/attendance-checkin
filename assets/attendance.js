@@ -52,9 +52,11 @@ $('tabs').addEventListener('click', (e) => {
 /* ---------- 员工 ---------- */
 // 列表接口只回 has_face（不传 128 维特征，省流量）；兼容旧字段 face_descriptor
 const faceReady = (e) => !!(e && (e.has_face || e.face_descriptor));
+let EMP_LIST = [];   // 员工缓存：日历需要 country 判断节假日、需要班次判断应出勤
 async function loadEmployees() {
   const r = await api('/api/att/employees');
   if (!r.ok) return;
+  EMP_LIST = r.body.employees || [];
   $('empBody').innerHTML = r.body.employees.map((e) => `<tr>
     <td>${e.name}</td><td>${e.dept || '-'}</td><td>${e.emp_no || '-'}</td>
     <td>${faceReady(e) ? '<span class="pill g">已建底库</span>' : '<span class="pill r">未录入</span>'}</td>
@@ -369,8 +371,158 @@ async function addHol() {
 }
 async function delHol(id) { await api('/api/att/holidays/' + id, { method: 'DELETE' }); loadHol(); }
 
-/* ---------- 记录 ---------- */
+/* ---------- 记录：考勤日历 / 列表 ---------- */
+const CAL = { view: 'cal', y: 0, m: 0, recs: [], hol: [] };
+const pad2 = (n) => String(n).padStart(2, '0');
+const ymd = (d) => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const hhmm = (s) => (s || '').slice(11, 16);
+const hmText = (min) => Math.floor(min / 60) + 'h' + pad2(Math.round(min % 60)) + 'm';
+// 记录时间 'YYYY-MM-DD HH:MM:SS' → 时间戳（本地时区，仅用于算时长）
+const tsOf = (s) => { const [d, t] = (s || '').split(' '); return d && t ? new Date(d + 'T' + t).getTime() : NaN; };
+
+function switchRecView(v) {
+  CAL.view = v;
+  document.querySelectorAll('#recViewSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  $('calWrap').style.display = v === 'cal' ? '' : 'none';
+  $('listWrap').style.display = v === 'list' ? '' : 'none';
+  $('calNav').style.display = v === 'cal' ? '' : 'none';
+  $('recMonthWrap').style.display = v === 'cal' ? '' : 'none';
+  $('recRangeWrap').style.display = v === 'cal' ? 'none' : '';
+  $('recRangeWrap2').style.display = v === 'cal' ? 'none' : '';
+  loadRec();
+}
+function calSet(y, m) {
+  CAL.y = y; CAL.m = m;
+  $('rec_month').value = y + '-' + pad2(m);
+  loadRec();
+}
+function calShift(d) {
+  let y = CAL.y, m = CAL.m + d;
+  if (m < 1) { m = 12; y -= 1; } else if (m > 12) { m = 1; y += 1; }
+  calSet(y, m);
+}
+function calToday() { const n = new Date(); calSet(n.getFullYear(), n.getMonth() + 1); }
+function calJumpMonth() { const v = $('rec_month').value; if (!v) return; const [y, m] = v.split('-').map(Number); if (y && m) calSet(y, m); }
+
+async function loadCal() {
+  if (!CAL.y) { const n = new Date(); CAL.y = n.getFullYear(); CAL.m = n.getMonth() + 1; $('rec_month').value = CAL.y + '-' + pad2(CAL.m); }
+  // 日历按人展示：默认锁定第一位员工，「全部」对日历无意义
+  if (!$('rec_emp').value && $('rec_emp').options.length > 1) $('rec_emp').value = $('rec_emp').options[1].value;
+  const id = $('rec_emp').value;
+  $('calTitle').textContent = CAL.y + ' 年 ' + CAL.m + ' 月';
+  if (!id) {
+    $('calGrid').innerHTML = '<div class="muted" style="grid-column:1/-1;text-align:center;padding:34px 0">请先在「员工」里选择一位员工，日历按人展示当月考勤</div>';
+    $('calSum').innerHTML = ''; return;
+  }
+  const from = CAL.y + '-' + pad2(CAL.m) + '-01';
+  const last = new Date(CAL.y, CAL.m, 0).getDate();
+  const to = CAL.y + '-' + pad2(CAL.m) + '-' + pad2(last);
+  const [rr, hr] = await Promise.all([
+    api('/api/att/records?empId=' + encodeURIComponent(id) + '&from=' + from + '&to=' + to),
+    api('/api/att/holidays'),
+  ]);
+  if (!rr.ok) { toast('记录加载失败' + (rr.body && rr.body.error ? '：' + rr.body.error : '')); return; }
+  CAL.recs = rr.body.records || [];
+  CAL.hol = (hr.ok && hr.body.holidays) || [];
+  renderCal(last);
+}
+
+function renderCal(last) {
+  const y = CAL.y, m = CAL.m;
+  const emp = EMP_LIST.find((e) => e.id === $('rec_emp').value) || {};
+  const country = String(emp.country || 'CN').toUpperCase();
+  const holMap = {}, makeupSet = {};
+  CAL.hol.forEach((h) => {
+    if (String(h.country || '').toUpperCase() !== country) return;
+    if (h.type === 'makeup') makeupSet[h.date] = h.name || '调休补班';
+    else holMap[h.date] = h.name || '节假日';
+  });
+  // 同一天多条记录：上班取最早、下班取最晚
+  const byDay = {};
+  CAL.recs.forEach((r) => { const d = (r.ts_local || '').slice(0, 10); if (d) (byDay[d] = byDay[d] || []).push(r); });
+
+  const firstDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;   // 周一 = 0
+  const todayStr = ymd(new Date());
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push('<div class="cal-cell blank"></div>');
+
+  const st = { work: 0, attend: 0, ok: 0, late: 0, early: 0, miss: 0, min: 0, minDays: 0 };
+  for (let d = 1; d <= last; d++) {
+    const date = y + '-' + pad2(m) + '-' + pad2(d);
+    const dow = new Date(y, m - 1, d).getDay();               // 0 = 周日
+    const recs = byDay[date] || [];
+    const ci = recs.filter((r) => r.type === 'check_in').sort((a, b) => (a.ts_local || '').localeCompare(b.ts_local || ''))[0];
+    const co = recs.filter((r) => r.type === 'check_out').sort((a, b) => (b.ts_local || '').localeCompare(a.ts_local || ''))[0];
+    const isHol = !!holMap[date], isMakeup = !!makeupSet[date];
+    const isWeekend = (dow === 0 || dow === 6) && !isMakeup;
+    const isWorkday = !isHol && !isWeekend;
+
+    let cls = 's-none', badge = '', note = '', mins = null;
+    if (ci && co) {
+      mins = Math.round((tsOf(co.ts_local) - tsOf(ci.ts_local)) / 60000);
+      const late = ci.time_status === 'late', early = co.time_status === 'early_out';
+      if (late && early) { cls = 's-late'; badge = '迟到·早退'; }
+      else if (late) { cls = 's-late'; badge = '迟到'; }
+      else if (early) { cls = 's-early'; badge = '早退'; }
+      else { cls = 's-ok'; badge = (isHol || isWeekend) ? '加班' : '正常'; }
+    } else if (ci) { cls = 's-miss'; badge = date === todayStr ? '上班中' : '缺下班'; }
+    else if (co) { cls = 's-miss'; badge = '缺上班'; }
+    else if (isHol) { cls = 's-hol'; badge = '假'; note = holMap[date]; }
+    else if (isWeekend) { cls = 's-rest'; badge = '休'; }
+    else if (date > todayStr) { cls = 's-none'; badge = ''; }   // 未来日期：不算缺卡
+    else { cls = 's-miss'; badge = '缺卡'; }
+
+    if (isWorkday && date <= todayStr) {                        // 统计截至今天，未来不算缺卡
+      st.work++;
+      if (ci || co) st.attend++;
+      if (badge === '迟到·早退' || badge === '迟到') st.late++;
+      if (badge === '迟到·早退' || badge === '早退') st.early++;
+      if (cls === 's-miss') st.miss++;
+      else if (badge === '正常') st.ok++;
+    }
+    if (mins && mins > 0 && mins < 24 * 60) { st.min += mins; st.minDays++; }
+
+    const timeHtml = (ci || co)
+      ? `<div class="tt">${ci ? `<em>上</em> <b>${hhmm(ci.ts_local)}</b>` : '<em>上</em> <b>—</b>'}<br>${co ? `<em>下</em> <b>${hhmm(co.ts_local)}</b>` : '<em>下</em> <b>—</b>'}</div>`
+      : (note ? `<div class="tt"><em>${note}</em></div>` : '');
+    const hrHtml = mins && mins > 0 ? `<div class="hrs">${hmText(mins)}</div>` : '';
+    cells.push(`<div class="cal-cell ${cls}${isWeekend ? ' weekend' : ''}${date === todayStr ? ' today' : ''}" onclick="openDay('${date}')">
+      <div class="dnum">${d}</div>${badge ? `<span class="bg">${badge}</span>` : ''}${timeHtml}${hrHtml}</div>`);
+  }
+  while (cells.length % 7 !== 0) cells.push('<div class="cal-cell blank"></div>');
+  $('calGrid').innerHTML = cells.join('');
+
+  const avg = st.minDays ? hmText(st.min / st.minDays) : '—';
+  const kv = (k, v) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  $('calSum').innerHTML = kv('应出勤', st.work + ' 天') + kv('已打卡', st.attend + ' 天') +
+    kv('正常', st.ok) + kv('迟到', st.late) + kv('早退', st.early) + kv('缺卡', st.miss) + kv('平均工时', avg);
+}
+
+function openDay(date) {
+  const recs = CAL.recs.filter((r) => (r.ts_local || '').slice(0, 10) === date);
+  const emp = EMP_LIST.find((e) => e.id === $('rec_emp').value) || {};
+  const hol = CAL.hol.find((h) => h.date === date && String(h.country || '').toUpperCase() === String(emp.country || 'CN').toUpperCase());
+  $('dayTitle').textContent = date + ' · ' + (emp.name || '') + (emp.emp_no ? '（' + emp.emp_no + '）' : '') + (hol ? ' · ' + (hol.name || '') : '');
+  if (!recs.length) {
+    $('dayBody').innerHTML = '<div class="muted">当天没有打卡记录</div>';
+  } else {
+    $('dayBody').innerHTML = '<table class="day-tb">' + recs.map((r) => {
+      const map = { normal: '正常', late: '迟到', early_out: '早退', normal_out: '正常下班' };
+      return `<tr>
+        <td>${r.type === 'check_in' ? '上班' : '下班'}</td>
+        <td><b>${hhmm(r.ts_local)}</b> <span class="muted">当地</span><br><span class="muted">北京 ${(r.ts_utc || '').slice(11, 16)}</span></td>
+        <td>${r.in_range ? '<span class="pill g">范围内</span>' : '<span class="pill r">越界</span>'}<br><span class="muted">${r.distance_m != null ? Math.round(r.distance_m) + ' m' : '—'}</span></td>
+        <td>${r.face_match ? '<span class="pill g">人脸通过</span>' : '<span class="pill r">人脸失败</span>'}<br><span class="muted">${map[r.time_status] || r.time_status || ''}</span></td>
+        <td>${r.lat != null ? `<span class="geo-btn" onclick="reverseGeocode('${r.lat}','${r.lng}',this)">📍 解析位置</span>` : '—'}</td>
+      </tr>`;
+    }).join('') + '</table>';
+  }
+  $('dayModal').style.display = 'flex';
+}
+function closeDayModal() { $('dayModal').style.display = 'none'; }
+
 async function loadRec() {
+  if (CAL.view === 'cal') return loadCal();
   const p = new URLSearchParams();
   if ($('rec_emp').value) p.set('empId', $('rec_emp').value);
   if ($('rec_from').value) p.set('from', $('rec_from').value);
@@ -399,9 +551,18 @@ async function reverseGeocode(lat, lng, el) {
 async function exportCsv() {
   const p = new URLSearchParams();
   if ($('rec_emp').value) p.set('empId', $('rec_emp').value);
-  if ($('rec_from').value) p.set('from', $('rec_from').value);
-  if ($('rec_to').value) p.set('to', $('rec_to').value);
-  const month = ($('rec_from').value ? $('rec_from').value.slice(0, 7) : new Date().toISOString().slice(0, 7));
+  // 日历视图导出当前整月；列表视图沿用日期区间
+  let month;
+  if (CAL.view === 'cal' && CAL.y) {
+    const lastD = new Date(CAL.y, CAL.m, 0).getDate();
+    p.set('from', CAL.y + '-' + pad2(CAL.m) + '-01');
+    p.set('to', CAL.y + '-' + pad2(CAL.m) + '-' + pad2(lastD));
+    month = CAL.y + '-' + pad2(CAL.m);
+  } else {
+    if ($('rec_from').value) p.set('from', $('rec_from').value);
+    if ($('rec_to').value) p.set('to', $('rec_to').value);
+    month = ($('rec_from').value ? $('rec_from').value.slice(0, 7) : new Date().toISOString().slice(0, 7));
+  }
   const url = API + '/api/att/stats?export=csv&month=' + month + '&' + p.toString();
   const r = await fetch(url, { headers: auth() });
   if (!r.ok) { toast('导出失败'); return; }
@@ -593,5 +754,8 @@ async function boot() {
   const now = new Date();
   $('rec_from').value = localISO(new Date(now.getTime() - 6 * 86400000));
   $('rec_to').value = localISO(now);
+  // 日历默认打开当前月
+  CAL.y = now.getFullYear(); CAL.m = now.getMonth() + 1;
+  $('rec_month').value = CAL.y + '-' + pad2(CAL.m);
 }
 boot();

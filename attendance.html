@@ -81,6 +81,65 @@
   .mp-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
   .geo-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .leaflet-container { font: inherit; border-radius: 12px; }
+
+  /* ---------- 考勤日历 ---------- */
+  .rec-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .rec-top .seg { margin: 0; width: auto; }
+  .rec-top .seg button { flex: none; padding: 7px 16px; font-size: 13px; }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav b { font-size: 15px; min-width: 108px; text-align: center; }
+  .cal-dow { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-bottom: 6px; }
+  .cal-dow span { text-align: center; font-size: 12px; color: #6b779c; font-weight: 600; padding: 4px 0; }
+  .cal-dow span:nth-child(6), .cal-dow span:nth-child(7) { color: #b0b8cc; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal-cell { position: relative; background: #fff; border: 1px solid #e9edf6; border-left: 3px solid #e9edf6;
+    border-radius: 10px; padding: 7px 8px 8px; min-height: 88px; cursor: pointer; transition: box-shadow .15s, transform .15s; }
+  .cal-cell:hover { box-shadow: 0 4px 14px rgba(28, 36, 51, .1); transform: translateY(-1px); }
+  .cal-cell.blank { background: transparent; border: none; cursor: default; box-shadow: none; transform: none; }
+  .cal-cell .dnum { font-size: 13px; font-weight: 600; color: #1c2433; padding-right: 34px; }
+  .cal-cell.weekend .dnum { color: #98a2bb; }
+  .cal-cell.today { box-shadow: 0 0 0 2px rgba(47, 111, 237, .35); }
+  .cal-cell .bg { position: absolute; top: 6px; right: 6px; font-size: 10px; line-height: 1; padding: 3px 6px; border-radius: 10px; font-weight: 600; white-space: nowrap; }
+  .cal-cell .tt { margin-top: 6px; font-size: 11px; color: #4a5673; line-height: 1.55; }
+  .cal-cell .tt em { font-style: normal; color: #98a2bb; }
+  .cal-cell .tt b { font-weight: 600; color: #1c2433; font-variant-numeric: tabular-nums; }
+  .cal-cell .hrs { margin-top: 3px; font-size: 10px; color: #98a2bb; }
+  /* 状态配色 */
+  .cal-cell.s-ok { border-left-color: #1d9d5b; }
+  .cal-cell.s-ok .bg { background: #e6f7ee; color: #1d9d5b; }
+  .cal-cell.s-late { border-left-color: #e0a000; background: #fffdf6; }
+  .cal-cell.s-late .bg { background: #fff4e0; color: #c98a00; }
+  .cal-cell.s-early { border-left-color: #e07b00; background: #fffcf7; }
+  .cal-cell.s-early .bg { background: #fff0e0; color: #c96a00; }
+  .cal-cell.s-miss { border-left-color: #d23b3b; background: #fffafa; }
+  .cal-cell.s-miss .bg { background: #fdeaea; color: #d23b3b; }
+  .cal-cell.s-hol { border-left-color: #7b61ff; background: #faf8ff; }
+  .cal-cell.s-hol .bg { background: #f0ecff; color: #6a4cf0; }
+  .cal-cell.s-rest { border-left-color: #dfe5f0; background: #fbfcff; }
+  .cal-cell.s-rest .bg { background: #f1f4fa; color: #98a2bb; }
+  .cal-cell.s-none { border-left-color: #e9edf6; }
+  .cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; font-size: 12px; color: #6b779c; }
+  .cal-legend .lg { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+  .cal-legend .lg.ok { background: #1d9d5b; } .cal-legend .lg.late { background: #e0a000; }
+  .cal-legend .lg.early { background: #e07b00; } .cal-legend .lg.miss { background: #d23b3b; }
+  .cal-legend .lg.hol { background: #7b61ff; } .cal-legend .lg.rest { background: #dfe5f0; }
+  .cal-sum { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px dashed #e3e8f2; }
+  .cal-sum .k { font-size: 12px; color: #6b779c; }
+  .cal-sum .v { font-size: 17px; font-weight: 700; color: #1c2433; font-variant-numeric: tabular-nums; }
+  .cal-sum > div { min-width: 78px; }
+  /* 当日明细表 */
+  .day-tb { width: 100%; font-size: 13px; }
+  .day-tb td { padding: 7px 6px; }
+  .day-tb td:first-child { color: #6b779c; width: 82px; }
+  @media (max-width: 680px) {
+    .cal-grid, .cal-dow { gap: 4px; }
+    .cal-cell { min-height: 66px; padding: 5px 5px 6px; border-radius: 8px; }
+    .cal-cell .tt { font-size: 10px; line-height: 1.4; }
+    .cal-cell .bg { font-size: 9px; padding: 2px 4px; top: 4px; right: 4px; }
+    .cal-cell .hrs { display: none; }
+    .rec-top .seg button { padding: 6px 12px; }
+    .cal-nav b { min-width: 92px; font-size: 14px; }
+  }
 </style>
 </head>
 <body>
@@ -209,17 +268,55 @@
   <section id="sec-rec" style="display:none">
     <div class="card">
       <div class="row">
-        <div style="flex:1"><label>员工</label><select id="rec_emp"><option value="">全部</option></select></div>
-        <div><label>开始日期</label><input id="rec_from" type="date"></div>
-        <div><label>结束日期</label><input id="rec_to" type="date"></div>
+        <div style="flex:1;min-width:180px"><label>员工</label><select id="rec_emp" onchange="loadRec()"><option value="">全部（所有人）</option></select></div>
+        <div id="recMonthWrap"><label>月份</label><input id="rec_month" type="month" onchange="calJumpMonth()"></div>
+        <div id="recRangeWrap" style="display:none"><label>开始日期</label><input id="rec_from" type="date"></div>
+        <div id="recRangeWrap2" style="display:none"><label>结束日期</label><input id="rec_to" type="date"></div>
         <button class="btn" onclick="loadRec()">查询</button>
         <button class="btn ghost" onclick="pushDingtalk()">推送今日到钉钉</button>
         <button class="btn ghost" onclick="exportCsv()">导出 CSV</button>
       </div>
     </div>
-    <div class="card"><h3>打卡记录</h3>
-      <table><thead><tr><th>员工</th><th>类型</th><th>当地时间</th><th>距离</th><th>围栏</th><th>人脸</th><th>时间状态</th><th>节假日</th><th>位置</th></tr></thead>
-      <tbody id="recBody"></tbody></table></div>
+
+    <div class="card">
+      <div class="rec-top">
+        <div class="seg" id="recViewSeg">
+          <button data-v="cal" class="on" onclick="switchRecView('cal')">日历</button>
+          <button data-v="list" onclick="switchRecView('list')">列表</button>
+        </div>
+        <div class="cal-nav" id="calNav">
+          <button class="btn ghost s" onclick="calShift(-1)">‹ 上月</button>
+          <b id="calTitle">—</b>
+          <button class="btn ghost s" onclick="calShift(1)">下月 ›</button>
+          <button class="btn ghost s" onclick="calToday()">今天</button>
+        </div>
+      </div>
+
+      <div id="calWrap">
+        <div class="cal-dow"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="cal-legend">
+          <span><i class="lg ok"></i>正常</span><span><i class="lg late"></i>迟到</span>
+          <span><i class="lg early"></i>早退</span><span><i class="lg miss"></i>缺卡</span>
+          <span><i class="lg hol"></i>节假日</span><span><i class="lg rest"></i>休息日</span>
+        </div>
+        <div class="cal-sum" id="calSum"></div>
+      </div>
+
+      <div id="listWrap" style="display:none">
+        <table><thead><tr><th>员工</th><th>类型</th><th>当地时间</th><th>距离</th><th>围栏</th><th>人脸</th><th>时间状态</th><th>节假日</th><th>位置</th></tr></thead>
+        <tbody id="recBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- 当日明细 -->
+    <div class="modal" id="dayModal" onclick="if(event.target===this)closeDayModal()">
+      <div class="box" style="max-width:560px">
+        <h3 id="dayTitle" style="margin:0 0 12px;font-size:15px">—</h3>
+        <div id="dayBody"></div>
+        <div style="text-align:right;margin-top:14px"><button class="btn ghost" onclick="closeDayModal()">关闭</button></div>
+      </div>
+    </div>
   </section>
 
   <!-- 打卡范围（默认行政区 / 圆形 / 不限） -->
@@ -303,12 +400,12 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="assets/i18n.js?v=19"></script>
-<script src="assets/face-models.js?v=19"></script>
-<script src="assets/tz-list.js?v=19"></script>
-<script src="assets/map-picker.js?v=19"></script>
-<script src="assets/att-config.js?v=19"></script>
-<script src="assets/attendance.js?v=19"></script>
+<script src="assets/i18n.js?v=20"></script>
+<script src="assets/face-models.js?v=20"></script>
+<script src="assets/tz-list.js?v=20"></script>
+<script src="assets/map-picker.js?v=20"></script>
+<script src="assets/att-config.js?v=20"></script>
+<script src="assets/attendance.js?v=20"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});</script>
 </body>
 </html>
