@@ -24,9 +24,9 @@
       p.then(function (v) { clearTimeout(t); res(v); }, function (e) { clearTimeout(t); rej(e); });
     });
   }
-  async function probe(base) {
+  async function probe(base, useCache) {
     var t0 = Date.now();
-    var r = await timeout(fetch(base + PROBE, { cache: 'no-store' }), 6000);
+    var r = await timeout(fetch(base + PROBE, useCache ? {} : { cache: 'no-store' }), 6000);
     if (!r.ok) throw new Error('http ' + r.status);
     await r.text();
     return Date.now() - t0;
@@ -34,11 +34,11 @@
 
   async function pickBase() {
     if (picked) return picked;
-    // 本地源优先（Service Worker 会缓存，第二次打开直接命中）
-    try { await timeout(probe(LOCAL), 2500); picked = LOCAL; return picked; } catch (e) {}
-    // 本地源不可用：国内自有源 + 各 CDN 并发探速，取最快的
-    var rs = await Promise.all([DOMESTIC].concat(CDN).map(function (b) {
-      return probe(b).then(function (t) { return { b: b, t: t }; }, function () { return null; });
+    // 按真实往返时延竞速：国内访客会选中阿里云源，乌兹/海外访客会选中 GitHub Pages，
+    // 重复访问时本地源由 SW 缓存直接返回（几毫秒），自然又排到第一。
+    var bases = [LOCAL, DOMESTIC].concat(CDN);
+    var rs = await Promise.all(bases.map(function (b, i) {
+      return probe(b, i === 0).then(function (t) { return { b: b, t: t }; }, function () { return null; });
     }));
     var ok = rs.filter(Boolean).sort(function (a, b) { return a.t - b.t; });
     picked = ok.length ? ok[0].b : LOCAL;
