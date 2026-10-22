@@ -362,7 +362,9 @@ async function loadRec() {
   $('recBody').innerHTML = r.body.records.map((x) => {
     const hol = (x.holiday_local || x.holiday_cn) ? `<span class="pill y">${x.holiday_local_name || ''}${x.holiday_cn_name || ''}</span>` : '-';
     const ts = { normal: '正常', late: '迟到', early_out: '早退', normal_out: '正常下班' }[x.time_status] || x.time_status;
-    return `<tr><td>${x.emp_name}</td><td>${x.type === 'check_in' ? '上班' : '下班'}</td><td>${x.ts_local}</td>
+    const bj = (x.ts_utc || '').slice(11, 16);
+    const timeCell = `${x.ts_local}${bj ? `<br><span style="font-size:11px;color:#8a93a8">北京 ${bj}</span>` : ''}`;
+    return `<tr><td>${x.emp_name}${x.emp_no ? `<br><span style="font-size:11px;color:#8a93a8">${x.emp_no}</span>` : ''}</td><td>${x.type === 'check_in' ? '上班' : '下班'}</td><td>${timeCell}</td>
       <td>${x.distance_m}m</td><td>${x.in_range ? '<span class="pill g">内</span>' : '<span class="pill r">越界</span>'}</td>
       <td>${x.face_match ? '<span class="pill g">通过</span>' : '<span class="pill r">失败</span>'}</td>
       <td>${ts}</td><td>${hol}</td><td>${geoCell(x)}</td></tr>`;
@@ -567,8 +569,12 @@ async function boot() {
   await loadEmployees();
   // 记录页员工下拉
   const er = await api('/api/att/employees');
-  if (er.ok) $('rec_emp').innerHTML = '<option value="">全部</option>' + er.body.employees.map((e) => `<option value="${e.id}">${e.name}</option>`).join('');
-  const today = new Date().toISOString().slice(0, 10);
-  $('rec_from').value = today; $('rec_to').value = today;
+  if (er.ok) $('rec_emp').innerHTML = '<option value="">全部（所有人）</option>' + er.body.employees.map((e) => `<option value="${e.id}">${e.name}（${e.emp_no || '无工号'}）</option>`).join('');
+  // 默认看最近 7 天（toISOString 是 UTC，早上 8 点前会差一天，这里用浏览器本地日期）
+  const pad = (n) => String(n).padStart(2, '0');
+  const localISO = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const now = new Date();
+  $('rec_from').value = localISO(new Date(now.getTime() - 6 * 86400000));
+  $('rec_to').value = localISO(now);
 }
 boot();
