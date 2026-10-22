@@ -121,6 +121,21 @@
     </div>
     <div class="card"><h3>规则列表</h3><table><thead><tr><th>名称</th><th>国家</th><th>时区</th><th>中心</th><th>半径</th><th>时间</th><th>操作</th></tr></thead>
       <tbody id="ruleBody"></tbody></table></div>
+
+    <div class="card">
+      <h3>冬令时 / 夏令时（下班时间按季节自动切换）</h3>
+      <div class="grid">
+        <div><label>启用</label><select id="s_enabled"><option value="1">开启</option><option value="0">关闭</option></select></div>
+        <div><label>冬令时开始(MM-DD)</label><input id="s_from" value="10-01" placeholder="10-01"></div>
+        <div><label>冬令时结束(MM-DD)</label><input id="s_to" value="03-31" placeholder="03-31"></div>
+        <div><label>冬令时下班</label><input id="s_wend" type="time" value="17:30"></div>
+        <div><label>夏令时下班</label><input id="s_send" type="time" value="18:00"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn" onclick="saveSeason()">保存季节规则</button>
+        <span class="muted" id="seasonNow"> 加载中…</span></div>
+      <div class="muted" style="margin-top:6px">说明：默认每年 10月1日起进入冬令时、下班 17:30；次年 4月1日起回到夏令时、下班 18:00，以此循环。
+        仅对「标准下班时间」（夏令时下班时间，默认 18:00）生效，员工/规则里单独设置的其他下班时间不受影响。</div>
+    </div>
   </section>
 
   <!-- 节假日 -->
@@ -227,10 +242,10 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
-<script src="assets/i18n.js?v=13"></script>
-<script src="assets/face-models.js?v=13"></script>
-<script src="assets/att-config.js?v=13"></script>
-<script src="assets/attendance.js?v=13"></script>
+<script src="assets/i18n.js?v=14"></script>
+<script src="assets/face-models.js?v=14"></script>
+<script src="assets/att-config.js?v=14"></script>
+<script src="assets/attendance.js?v=14"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});</script>
 </body>
 </html>

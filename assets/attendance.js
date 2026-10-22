@@ -42,7 +42,7 @@ $('tabs').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
   [...$('tabs').children].forEach((x) => x.classList.toggle('on', x === b));
   ['emp', 'rule', 'hol', 'rec', 'gf', 'dt'].forEach((t) => ($('sec-' + t).style.display = t === b.dataset.t ? '' : 'none'));
-  if (b.dataset.t === 'rule') loadRules();
+  if (b.dataset.t === 'rule') { loadRules(); loadSeason(); }
   if (b.dataset.t === 'hol') loadHol();
   if (b.dataset.t === 'rec') loadRec();
   if (b.dataset.t === 'gf') loadGeofence();
@@ -246,6 +246,28 @@ async function addRule() {
   if (r.ok) { toast('规则已保存'); loadRules(); } else toast('保存失败：' + (r.body.error || ''));
 }
 async function delRule(id) { await api('/api/att/rules/' + id, { method: 'DELETE' }); loadRules(); }
+
+/* ---------- 冬令时 / 夏令时 ---------- */
+async function loadSeason() {
+  const r = await api('/api/att/season'); if (!r.ok || !$('s_from')) return;
+  const c = r.body.config || {}, t = r.body.today || {};
+  $('s_enabled').value = c.enabled === false ? '0' : '1';
+  $('s_from').value = c.winterFrom || '10-01';
+  $('s_to').value = c.winterTo || '03-31';
+  $('s_wend').value = c.winterEnd || '17:30';
+  $('s_send').value = c.summerEnd || '18:00';
+  $('seasonNow').textContent = c.enabled === false
+    ? ' 当前：季节规则已关闭，下班时间按规则/员工设定'
+    : ' 当前生效：' + (t.season === 'winter' ? '冬令时' : '夏令时') + '，今天下班时间 ' + (t.work_end || '') + '（' + (t.date || '') + '）';
+}
+async function saveSeason() {
+  const r = await api('/api/att/season', { method: 'POST', body: JSON.stringify({
+    enabled: $('s_enabled').value === '1',
+    winterFrom: $('s_from').value.trim(), winterTo: $('s_to').value.trim(),
+    winterEnd: $('s_wend').value, summerEnd: $('s_send').value,
+  }) });
+  if (r.ok) { toast('季节规则已保存'); loadSeason(); loadRules(); } else toast('保存失败：' + (r.body.error || ''));
+}
 
 /* ---------- 节假日 ---------- */
 async function loadHol() {

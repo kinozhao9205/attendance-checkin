@@ -408,7 +408,9 @@ function renderTzChips(emp) {
     if (bjDiff) { bj.textContent = tr('bj_time') + ' ' + fmtTime(_utcMs(), 480); bj.classList.remove('hidden'); }
     else { bj.textContent = ''; bj.classList.add('hidden'); }
   }
-  if (sh) sh.textContent = (emp.work_start && emp.work_end) ? tr('time_plan') + ' ' + String(emp.work_start).slice(0, 5) + '–' + String(emp.work_end).slice(0, 5) : '';
+  // 下班时间用「当前生效」值（冬令时 17:30 / 夏令时 18:00），服务端按员工时区算好下发
+  const endShow = emp.work_end_effective || emp.work_end;
+  if (sh) sh.textContent = (emp.work_start && endShow) ? tr('time_plan') + ' ' + String(emp.work_start).slice(0, 5) + '–' + String(endShow).slice(0, 5) : '';
 }
 
 // ---------------- 打卡类型 ----------------
