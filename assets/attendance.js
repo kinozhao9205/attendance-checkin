@@ -45,7 +45,7 @@ $('tabs').addEventListener('click', (e) => {
   if (b.dataset.t === 'rule') { loadRules(); loadSeason(); }
   if (b.dataset.t === 'hol') loadHol();
   if (b.dataset.t === 'rec') loadRec();
-  if (b.dataset.t === 'gf') loadGeofence();
+  if (b.dataset.t === 'gf') { gfTouched = false; loadGeofence(); }
   if (b.dataset.t === 'dt') loadDingtalk();
 });
 
@@ -401,6 +401,7 @@ async function pushDingtalk() {
 let GF_COUNTRIES = [];
 let GF_MAP = null;        // Leaflet 实例
 let gfBusy = false;       // 防止「地图 → 输入框 → 地图」互相触发的死循环
+let gfTouched = false;    // 用户已手动选过模式：loadGeofence 的慢回包不得覆盖（异步竞态防呆）
 
 function gfPaint(v) {
   if (!v) return;
@@ -442,8 +443,11 @@ async function loadGeofence() {
   const r = await api('/api/att/geofence');
   const gf = (r.ok && r.body.geofence) || { mode: 'off' };
   const mode = gf.mode || 'off';
-  [...$('gfSeg').children].forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
-  ['off', 'region', 'circle'].forEach((m) => $('gfPanel-' + m).classList.toggle('show', m === mode));
+  // 只有「刚进 tab、用户还没点过」才同步服务端模式；否则会把用户刚选的模式重置掉
+  if (!gfTouched) {
+    [...$('gfSeg').children].forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
+    ['off', 'region', 'circle'].forEach((m) => $('gfPanel-' + m).classList.toggle('show', m === mode));
+  }
   $('gfCurrent').textContent = geofenceText(gf);
 
   const c = await api('/api/att/geo/countries');
@@ -484,6 +488,7 @@ function geofenceText(gf) {
 }
 $('gfSeg') && $('gfSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
+  gfTouched = true;
   const m = b.dataset.m;
   [...$('gfSeg').children].forEach((x) => x.classList.toggle('on', x === b));
   ['off', 'region', 'circle'].forEach((mm) => $('gfPanel-' + mm).classList.toggle('show', mm === m));
