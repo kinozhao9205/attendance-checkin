@@ -526,6 +526,7 @@ async function punch() {
   if (!localStorage.getItem('att_privacy_agreed')) { showPrivacy(); return; }
   if (!currentEmp) { setStatus(tr('need_login'), 'warn'); return; }
   if (!currentEmp.has_face) { setStatus(tr('enroll_photo_hint'), 'warn'); return; }
+  await tgSdkReady;   // 等 SDK 就绪，确保打卡请求带上 initData
   punchBtn.disabled = true;
   setStatus(tr('recognizing'), 'warn');
   setCameraState('busy', tr('recognizing'));
@@ -590,9 +591,12 @@ function doInstall() {
 $('regCountry') && $('regCountry').addEventListener('change', onRegCountryChange);
 $('enrollFile') && $('enrollFile').addEventListener('change', onEnrollPhoto);
 if (IS_DD && $('btn-dd')) $('btn-dd').style.display = 'block'; // 钉钉环境显示一键登录
-if (IS_TG) loadScript('https://telegram.org/js/telegram-web-app.js').then(() => {
-  try { const tg = window.Telegram.WebApp; tg.ready(); tg.expand(); } catch (e) {}
-}).catch(() => {});
+// TG Mini App SDK：从 bot 打开时必须有它才有 initData（服务端强校验用）；加载完成前打卡会 403
+const tgSdkReady = IS_TG
+  ? loadScript('https://telegram.org/js/telegram-web-app.js')
+      .then(() => { try { const tg = window.Telegram.WebApp; tg.ready(); tg.expand(); } catch (e) {} })
+      .catch(() => {})
+  : Promise.resolve();
 renderLangSwitcher('lang-box');
 applyI18n();
 renderPrivacy();
