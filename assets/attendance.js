@@ -84,13 +84,21 @@ async function delEmp(id) { await api('/api/att/employees/' + id, { method: 'DEL
 
 /* ---------- 人脸录入（证件照 → 本地提取特征） ---------- */
 let enrollId = '', enrollDescriptor = null, enrollPreview = null;
+/* 模型加载进度：登录预热时后台也在跑，用户中途打开弹窗要能立刻看到「正在下载 2/3」，
+ * 而不是停在「请上传证件照」的旧文案上（那样点按钮就像没反应）。 */
+let fmProg = '';
+function fmSay(t) {
+  fmProg = t;
+  const m = $('enrollModal');
+  if (m && m.style.display === 'flex') $('enrollStatus').textContent = t;
+}
 function openEnroll(id, name) {
   enrollId = id; enrollDescriptor = null; enrollPreview = null;
   $('enrollName').textContent = '员工：' + name;
   $('enrollImg').src = ''; $('enrollFile').value = '';
   $('enrollBtn').disabled = true;
   $('enrollRetry').style.display = 'none';
-  $('enrollStatus').textContent = '请上传员工证件照（正面清晰人脸）';
+  $('enrollStatus').textContent = MODELS_OK ? '请上传员工证件照（正面清晰人脸）' : (fmProg || '正在加载人脸模型…');
   $('enrollModal').style.display = 'flex';
   // 打开弹窗就开始预热模型（7.7MB），等用户选完照片时往往已经下好
   ensureModels().catch(() => {});
@@ -98,28 +106,23 @@ function openEnroll(id, name) {
 function closeModal() { $('enrollModal').style.display = 'none'; }
 async function ensureModels(silent) {
   if (MODELS_OK) return true;
-  if (window.__fmLoading) return window.__fmLoading;      // 登录预热与点录入同时触发时复用同一次加载
-  const setText = (t) => { if (!silent) $('enrollStatus').textContent = t; };
-  setText('加载人脸模型…');
+  if (window.__fmLoading) { fmSay(fmProg || '正在加载人脸模型…'); return window.__fmLoading; } // 登录预热与点录入同时触发时复用同一次加载
+  fmSay(fmProg || '正在加载人脸模型…');
   if (!silent) $('enrollRetry').style.display = 'none';
   window.__fmLoading = (async () => {
     try {
       await window.FaceModels.load({
         tinyLandmark: false,           // 后台录入用标准关键点，精度更高
         onProgress: (i, n, label) => {
-          setText(i === n
-            ? '加载人脸模型 ' + i + '/' + n + '（' + label + '，约 6MB，首次稍慢）…'
-            : '加载人脸模型 ' + i + '/' + n + '（' + label + '）…');
+          fmSay('加载人脸模型 ' + i + '/' + n + '（' + label + (i === n ? '，约 6MB，首次稍慢' : '') + '）…');
         },
       });
       MODELS_OK = true;
-      setText('模型已就绪，正在提取人脸特征…');
+      fmSay('模型已就绪，正在提取人脸特征…');
       return true;
     } catch (e) {
-      if (!silent) {
-        $('enrollStatus').textContent = '模型加载失败：' + (e && e.message ? e.message : '网络异常') + '（可点「重新加载模型」重试）';
-        $('enrollRetry').style.display = '';
-      }
+      fmSay('模型加载失败：' + (e && e.message ? e.message : '网络异常') + '（可点「重新加载模型」重试）');
+      if (!silent) $('enrollRetry').style.display = '';
       return false;
     } finally { window.__fmLoading = null; }
   })();
@@ -129,17 +132,22 @@ async function retryModels() {
   window.FaceModels.reset();
   if (await ensureModels()) {
     if (enrollPreview) extractEnroll();
-    else $('enrollStatus').textContent = '模型已就绪，请上传员工证件照';
+    else fmSay('模型已就绪，请上传员工证件照');
   }
 }
 function previewEnroll() {
   const f = $('enrollFile').files[0]; if (!f) return;
   const rd = new FileReader();
-  rd.onload = async () => { $('enrollImg').src = rd.result; enrollPreview = rd.result; extractEnroll(); };
+  rd.onload = async () => {
+    $('enrollImg').src = rd.result; enrollPreview = rd.result;
+    $('enrollBtn').disabled = false;   // 立刻可点：点了就先识别再保存，避免灰按钮像"死机"
+    extractEnroll();
+  };
   rd.readAsDataURL(f);
 }
 async function extractEnroll() {
-  if (!enrollPreview) return;
+  if (!enrollPreview) { toast('请先选择员工照片'); return; }
+  fmSay('正在准备人脸识别…');
   if (!(await ensureModels())) return;
   $('enrollStatus').textContent = '正在提取人脸特征…';
   try { await $('enrollImg').decode(); } catch (e) {}
@@ -169,8 +177,15 @@ function shrinkPhoto(dataUrl, maxEdge = 720, quality = 0.85) {
   });
 }
 async function doEnroll() {
-  if (!enrollDescriptor || !enrollId) return;
+  if (!enrollId) return;
   const btn = $('enrollBtn');
+  // 照片刚选好还没提完特征就点按钮：先识别再保存，不能默默 return
+  if (!enrollDescriptor) {
+    if (!enrollPreview) { toast('请先选择员工照片'); $('enrollStatus').textContent = '请上传员工证件照（正面清晰人脸）'; return; }
+    toast('正在识别人脸，稍候会自动保存…');
+    await extractEnroll();
+    if (!enrollDescriptor) { toast('人脸识别未完成，请按提示重试'); return; }
+  }
   btn.disabled = true;
   $('enrollStatus').textContent = '正在保存人脸底库…';
   try {

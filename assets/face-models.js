@@ -8,6 +8,8 @@
 (function () {
   'use strict';
   var LOCAL = 'assets/vendor/models';
+  // 国内自有服务器（阿里云）：比 GitHub Pages 快 3 倍以上，弱网下最稳
+  var DOMESTIC = 'https://www.bydtyr.com/att-api/assets/vendor/models';
   var CDN = [
     'https://gcore.jsdelivr.net/gh/kinozhao9205/attendance-checkin@main/assets/vendor/models',
     'https://cdn.jsdelivr.net/gh/kinozhao9205/attendance-checkin@main/assets/vendor/models',
@@ -34,7 +36,8 @@
     if (picked) return picked;
     // 本地源优先（Service Worker 会缓存，第二次打开直接命中）
     try { await timeout(probe(LOCAL), 2500); picked = LOCAL; return picked; } catch (e) {}
-    var rs = await Promise.all(CDN.map(function (b) {
+    // 本地源不可用：国内自有源 + 各 CDN 并发探速，取最快的
+    var rs = await Promise.all([DOMESTIC].concat(CDN).map(function (b) {
       return probe(b).then(function (t) { return { b: b, t: t }; }, function () { return null; });
     }));
     var ok = rs.filter(Boolean).sort(function (a, b) { return a.t - b.t; });
@@ -64,7 +67,7 @@
       var api = window.faceapi;
       if (!api) throw new Error('face-api 未加载');
       var base = await pickBase();
-      var order = [base].concat([LOCAL].concat(CDN).filter(function (b) { return b !== base; }));
+      var order = [base].concat([LOCAL, DOMESTIC].concat(CDN).filter(function (b) { return b !== base; }));
       var lmName = opts.tinyLandmark === false ? 'faceLandmark68Net' : 'faceLandmark68TinyNet';
       var steps = [
         ['tinyFaceDetector', '检测模型'],
